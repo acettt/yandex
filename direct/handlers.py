@@ -11,6 +11,10 @@ from google.appengine.api import memcache, mail
 import json, logging
 
 _timezone=timedelta(hours=4)
+ya_login="luk-direct"
+ya_pass="Wq21150i"
+ya_token="605de565b31f4063aa0ba11d9adb5dc1"
+ya_stoket="dddd7371f0f9456a915c61f0e859009c"
 
 def implode(lists):
 	str=""
@@ -102,7 +106,7 @@ class StopCampaignHandler(RequestHandler, Jinja2Mixin):
 	cid=self.request.args.get('camp_id')
 	obj=mycacher.get("obj")
 	if obj is None:
-		obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 		mycacher.set("obj",obj)
 	arr=obj.StopCampaign(cid)
 	memcache.delete("camps2")
@@ -113,7 +117,7 @@ class StartCampaignHandler(RequestHandler, Jinja2Mixin):
 	cid=self.request.args.get('camp_id')
 	obj=mycacher.get("obj")
 	if obj is None:
-		obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 		mycacher.set("obj",obj)
 	obj.ResumeCampaign(cid)
 	memcache.delete("camps2")
@@ -145,7 +149,7 @@ class CreateInvoiceHandler(RequestHandler, Jinja2Mixin):
 	yacamps.put()
 	obj=mycacher.get("obj")
 	if obj is None:
-		obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 		mycacher.set("obj",obj)
 	logging.debug('create invoice '+str(cid)+', amount '+str(amn))
 	ret=obj.CreateInvoice(cid,amn,opnum)
@@ -161,7 +165,7 @@ class ControlCampaignHandler(RequestHandler, Jinja2Mixin):
 	plan2=plan*0.9
 	obj=mycacher.get("obj")
 	if obj is None:
-		obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 		mycacher.set("obj",obj)
 	param=obj.GetCampaignParams(camp_id)
 
@@ -203,7 +207,7 @@ class UpdateStatHandler(RequestHandler, Jinja2Mixin):
 		td=datetime.today()+_timezone
 		obj=mycacher.get("obj")
 		if obj is None:
-			obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 			mycacher.set("obj",obj)
 		cmps=obj.GetCampaignsParams(camp_id)
 		camp_id=[str(cmp_id) for cmp_id in cmps if (cmps[cmp_id]["Rest"]>0) and (min(cmps[cmp_id]["TimeTarget"]["DaysHours"][0]["Hours"])<=td.hour) and (cmps[cmp_id]["Status"]!=u'Кампания остановлена')]
@@ -221,7 +225,7 @@ class UpdateRestHandler(RequestHandler, Jinja2Mixin):
 		camp_id=[camps[camp].camp_id for camp in camps]
 		obj=mycacher.get("obj")
 		if obj is None:
-			obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 			mycacher.set("obj",obj)
 		cmps=obj.GetCampaignsParams(camp_id)
 		for camp in camps:
@@ -259,7 +263,7 @@ class UpdateCampanyStatHandler(RequestHandler, Jinja2Mixin):
     def post(self):
 	obj=mycacher.get("obj")
 	if obj is None:
-		obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 		mycacher.set("obj",obj)
 	_camps=self.request.form.get('camp_id')
 	camps=_camps.split(",")
@@ -369,7 +373,7 @@ class SaveCampaignHandler(RequestHandler, Jinja2Mixin):
 		param.append({"PhraseID":phrid,"BannerID":banid,"CampaignID":campid,"Price":value,"AutoBroker":"Yes"})
 	obj=mycacher.get("obj")
 	if obj is None:
-		obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 		mycacher.set("obj",obj)
 	obj.UpdatePrices(param)
 	return Response('1')
@@ -378,7 +382,7 @@ class CampaignHandler(RequestHandler, Jinja2Mixin):
 	camp_id=int(self.request.args.get('cid'))
 	obj=mycacher.get("obj")
 	if obj is None:
-		obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 		mycacher.set("obj",obj)
 	banners=obj.GetBanners(camp_id)
 	phrs=obj.GetBannerPhrases([key["BannerID"] for key in banners])
@@ -409,7 +413,7 @@ class GetStatHandler(RequestHandler, Jinja2Mixin):
 
 	obj=mycacher.get("obj")
 	if obj is None:
-		obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 		mycacher.set("obj",obj)
 	yacamps = getCampByID(camp_id)
 	dicts={}
@@ -515,7 +519,7 @@ class IndexHandler(RequestHandler, Jinja2Mixin):
 	start_date=dates[-1]
 	obj=mycacher.get("obj")
 	if obj is None:
-		obj=YaObject('luk-direct','Wq21150i','605de565b31f4063aa0ba11d9adb5dc1','dddd7371f0f9456a915c61f0e859009c')
+		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
 		mycacher.set("obj",obj)
 
 	camps=memcache.get("camps2")
