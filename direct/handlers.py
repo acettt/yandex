@@ -14,7 +14,7 @@ _timezone=timedelta(hours=4)
 ya_login="luk-direct"
 ya_pass="Wq21150i"
 ya_token="605de565b31f4063aa0ba11d9adb5dc1"
-ya_stoket="dddd7371f0f9456a915c61f0e859009c"
+ya_stoken="dddd7371f0f9456a915c61f0e859009c"
 
 def implode(lists):
 	str=""
