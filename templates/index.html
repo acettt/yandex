@@ -1,0 +1,521 @@
+<html>
+<head>
+<script src="/static/js/jquery-1.7.1.min.js" type="text/javascript"></script>
+<script src="/static/js/jquery-ui-1.8.17.custom.min.js" type="text/javascript"></script>
+<script src="/static/js/jquery.floatheader.min.js" type="text/javascript"></script>
+<link rel="stylesheet" href="/static/css/ui-lightness/jquery-ui-1.8.17.custom.css">
+<script src="/static/js/jquery.ui.datepicker-ru.js" type="text/javascript"></script>
+<script type="text/javascript" src="https://www.google.com/jsapi"></script>
+<script src="/static/js/json2.js" type="text/javascript"></script>
+<script type="text/javascript">
+	google.load("visualization", "1", {packages:["corechart"]});
+	google.setOnLoadCallback(drawChart);
+	function drawChart()
+	{
+	};
+</script>
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+<title>Фёдор Перваков</title>
+<style>
+body {
+	font:  12px/14px Tahoma; 
+	margin: 0;
+	padding: 0;
+}
+table {
+	border-collapse: collapse;
+}
+table td {
+	padding: 2px 8px 3px 8px; 
+	font:  13px/15px Tahoma; 
+}
+td span {
+	color: #999;
+}
+td input {
+	border: solid 1px #888;
+}
+table thead td {
+	background-Color:  #777; 
+	color:  white; 
+}
+
+tbody tr:nth-child(even) {background: #DDD}
+tbody tr:nth-child(odd) {background: #FFF}
+
+.winGraph {
+	width: 800px;
+	height: 520px;
+	border: solid 1px #666;
+	background-Color: #fff;
+	padding: 12px;
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	display:none;
+	-moz-border-radius: 9px;
+	-webkit-border-radius: 9px;
+	border-radius: 9px;
+	-moz-box-shadow: 3px 3px 3px #999;
+	-webkit-box-shadow: 3px 3px 3px #999;
+	box-shadow: 3px 3px 3px #999;
+}
+
+.graphs {
+}
+
+.graph_control {
+	margin-top: 20px;
+}
+
+.graph_control span {
+	text-decoration: underline;
+	color: #3399cc;
+}
+
+.graph_control span.active {
+	color: red;
+}
+.graph {
+	text-decoration: underline;
+	color: #6699cc;
+	cursor: pointer;
+}
+.close_button {
+	float: right;
+	width: 16px;
+	height: 16px;
+	color: white;
+	background-Color: red;
+	border: solid 1px black;
+	cursor: pointer;
+	padding: 3px 0 0 7px;
+}
+.save_button {
+	float: right;
+	width: 16px;
+	height: 16px;
+	color: white;
+	background-Color: green;
+	border: solid 1px black;
+	cursor: pointer;
+	padding: 3px 0 0 7px;
+	margin-right: 7px;
+}
+
+.hidden_div {}
+.status {
+}
+.row_data {
+}
+
+.per_bar {
+	width: 30px;
+	height: 16px;
+	padding-top: 2px;
+	margin-top: 2px;
+	border: solid 1px blue;
+	color: white;
+	font: 11px/12px tahoma;	
+	text-align: center;
+	float: right;
+}
+
+.stop_button {
+	width: 24px;
+	height: 24px;
+	background: url('/static/images/button_pause_red.png') no-repeat top left;
+}
+.start_button {
+	width: 24px;
+	height: 24px;
+	background: url('/static/images/button_play_green.png') no-repeat top left;
+}
+
+.camp_info_box {
+	display: none;
+	position: absolute;
+	border: solid 1px #aaa;
+	padding: 10px;
+	-moz-border-radius: 6px;
+	-webkit-border-radius: 6px;
+	border-radius: 6px;
+	-moz-box-shadow: 1px 1px 1px #333;
+	-webkit-box-shadow: 1px 1px #333;
+	box-shadow: 1px 1px 1px #333;
+	background: #fff;	
+}
+.camp_info {
+	color: black;
+	text-decoration: underline;
+	cursor: pointer;
+}
+
+.btn_date {
+	width: 20px;
+	height: 18px;
+	border: solid 1px #aaa;
+	background: #f5f5f5;
+	cursor: pointer;
+	text-align: center;
+	padding-top: 2px;
+	-moz-border-radius: 6px;
+	-webkit-border-radius: 6px;
+	border-radius: 6px;
+}
+.btn_date_sel {
+	background: #333;
+	border: solid 1px #000;
+	color: #fff;	
+}
+.dlg_date {
+	position: absolute;
+}
+.toolbars {
+	padding: 10px 0 0 20px;
+}
+.toolbars div {
+	-moz-border-radius: 6px;
+	-webkit-border-radius: 6px;
+	border-radius: 6px;
+	background: #f9f9f9;
+	color: #000;
+	font-size: 13px;
+	padding: 3px 10px;
+	text-align: center;
+	-moz-box-shadow: 1px 1px 1px #333;
+	-webkit-box-shadow: 1px 1px #333;
+	box-shadow: 1px 1px 1px #333;
+	float: left;
+	margin-right: 15px;
+	cursor: pointer;
+}
+.toolbars .button_selected {
+	background: #ff0000;
+	color: #fff;
+}
+.stoptime {
+	-moz-border-radius: 6px;
+	-webkit-border-radius: 6px;
+	border-radius: 6px;
+	background: #ff0000;
+	color: #fff;
+	font-size: 11px;
+	padding: 1px 0px;
+	width: 38px;
+	text-align: center;
+	-moz-box-shadow: 1px 1px 1px #333;
+	-webkit-box-shadow: 1px 1px #333;
+	box-shadow: 1px 1px 1px #333;
+	float: right;
+}
+.chart {
+	width: 600px;
+	height: 450px;
+	border: solid 1px gold;
+}
+
+</style>
+
+<script>
+var chart_data=new Array()
+var chart;
+
+$(document).ready(function(){
+	$(".close_button").click(function(){
+		$(".winGraph").hide();		
+	});
+	$(".toolbars div").click(function(){
+        	chart.draw(chart_data[$(this).attr("type")]["data"],chart_data[$(this).attr("type")]["option"]);		
+		$(".toolbars div").removeClass("button_selected");
+		$(this).addClass("button_selected");
+	});
+	$(".graph").click(function(){
+		$(".toolbars div").removeClass("button_selected");
+		$(".toolbars div[type='sum']").addClass("button_selected");
+
+		$(".winGraph").css({left: 400, top: 200}).show();
+		var pr=new Array("sum","per","clicks","shows");
+		var titles={"sum": "Стоимость","per": "Цена за клик","clicks": "Клики","shows": "Показы"};
+		var vaxis={"sum": "Цена","per": "Цена","clicks": "Количество","shows": "Количество"};
+		{
+	        	data = new google.visualization.DataTable();
+		        data.addColumn('date', 'Дата');
+        		data.addColumn('number', 'CTR');
+			arr=JSON.parse($(this).find(".ctr").html());
+			for(key in arr)
+			{
+				data.addRow([new Date(arr[key][0]),arr[key][1]]);
+			}
+	        	var options = {
+		          width: 770, height: 450,
+        		  title: $(this).find(".camp_title").html()+", CTR",
+		          vAxis: {title: "CTR",  titleTextStyle: {color: 'black'}},
+     	 		  animation:{
+			        duration: 1000,
+			        easing: 'out',
+		          }
+	        	};
+			chart_data["ctr"]={};
+			chart_data["ctr"]["data"]=data;
+			chart_data["ctr"]["option"]=options;
+		};
+		{
+	        	data = new google.visualization.DataTable();
+		        data.addColumn('date', 'Дата');
+        		data.addColumn('timeofday', 'Остановка');
+			arr=JSON.parse($(this).find(".stop").html());
+			for(key in arr)
+			{
+				data.addRow([new Date(arr[key][0]),arr[key][1]]);
+			}
+	        	var options = {
+		          width: 770, height: 450,
+        		  title: $(this).find(".camp_title").html()+", Дата остановки",
+		          vAxis: {title: "Дата остановки",  titleTextStyle: {color: 'black'}},
+     	 		  animation:{
+			        duration: 1000,
+			        easing: 'out',
+		          }
+	        	};
+			chart_data["stop"]={};
+			chart_data["stop"]["data"]=data;
+			chart_data["stop"]["option"]=options;
+		};
+		for(param in pr)
+		{
+	        	data = new google.visualization.DataTable();
+		        data.addColumn('date', 'Дата');
+        		data.addColumn('number', 'На поиске');
+		        data.addColumn('number', 'На контексте');
+        		data.addColumn('number', 'Всего');
+			arr=JSON.parse($(this).find("."+pr[param]).html());
+			for(key in arr)
+			{
+				data.addRow([new Date(arr[key][0]),arr[key][1],arr[key][2],arr[key][3]]);
+			}
+	        	var options = {
+		          width: 770, height: 450,
+        		  title: $(this).find(".camp_title").html()+", "+titles[pr[param]],
+		          vAxis: {title: vaxis[pr[param]],  titleTextStyle: {color: 'black'}},
+     	 		  animation:{
+			        duration: 1000,
+			        easing: 'out',
+		          }
+	        	};
+			chart_data[pr[param]]={};
+			chart_data[pr[param]]["data"]=data;
+			chart_data[pr[param]]["option"]=options;
+		};
+	        chart = new google.visualization.AreaChart(document.getElementById('chart'));
+        	chart.draw(chart_data["sum"]["data"],chart_data["sum"]["option"]);
+	});
+	$(".camp_control").keydown(function(){
+		$(this).css("backgroundColor","red");
+	});
+
+	$(".camp_control").change(function(){
+		var t=parseInt($(this).val());
+		var res="change_control="+t+"&camp_id="+$(this).attr("camp_id");
+
+		$.ajax({
+			type: 'POST',
+			url: '/change', 
+			data: res, 
+			success: function(msg){
+				var tt=msg.split("_");
+				$(".camp_control[camp_id='"+tt[0]+"']").val(tt[1]).css("backgroundColor","white");
+			}
+		}); 
+	});
+	$(".camp_info").toggle(function(){
+		$(this).next().next().next().show();
+	},function(){
+		$(this).next().next().next().hide();
+	});
+
+	$(".get_invoice").click(function(){
+		res="get_invoice="+$(this).attr("camp_id")+"&amount="+$(this).prev().val();
+		$.ajax({
+			type: 'POST',
+			url: '/invoice', 
+			data: res, 
+			success: function(msg){
+				window.open(msg);
+			}
+		}); 
+	});
+	
+	$("#tbl").floatHeader(); 
+
+	$(".save_button").live('click',function(){
+		var canvas = document.getElementById("canvasMyID1");
+		str=canvas.toDataURL("image/jpeg");
+
+		res="op=save_pic&dataurl="+str;
+		$.ajax({
+			type: 'POST',
+			url: 'index.php', 
+			data: res, 
+			success: function(msg){
+				alert("/download.php?src="+msg);
+				window.open("/download.php?src="+msg);
+			}
+		}); 
+	});
+	$(".btn_date").click(function(){                    
+		$(this).next().show().datepicker({
+			onSelect: function(dateText,inst){
+				$(this).hide();
+				d1=new Date();
+				t1=dateText.split(".");
+				d2=new Date(parseInt(t1[2]),(parseInt(t1[1])-1),parseInt(t1[0]));
+				t2=(d2-d1)/(60*60*24*1000);
+				cnt=Math.ceil(t2)+1;
+				$(this).prev().html(cnt).addClass("btn_date_sel");
+				v=parseFloat($(this).parent().prev().prev().html());
+				$(this).parent().prev().find("input").attr("disabled","disabled").val(parseInt(v/cnt));
+			}
+		});
+	});
+});
+</script>
+
+</head>
+<body>
+<div class="winGraph">
+	<div class="close_button">X</div>
+	<div class="save_button">S</div>
+	<div style="clear:both"></div>
+	<div id="chart"></div>
+	<div class="toolbars">
+		<div class="button_selected" type="sum">Стоимость</div>
+		<div type="per">Цена за клик</div>
+		<div type="clicks">Клики</div>
+		<div type="shows">Показы</div>
+		<div type="ctr">CTR</div>
+		<div type="stop">Дата остановки</div>
+	</div>
+</div>
+<table width="100%" id="tbl">
+<thead>
+<tr  class="floating header">
+<td>Название кампании</td>
+<td width="20px">&nbsp;</td>
+<td>Ост</td>
+<td width="75px">Контроль</td>
+<td width="10px">ДТ</td>
+<td colspan="4" align="center" style="background-Color: red">Сегодня</td>
+<td colspan="4" align="center" style="background-Color: gold">Вчера</td>
+<td colspan="4" align="center" style="background-Color: green">Срдн 15 раб дн</td>
+<td colspan="1" align="center" style="background-Color: blue">Стат</td>
+<td width="120px" align="center" colspan="2">Статус</td>
+</tr>
+<tr class="floating header">
+<td colspan="5">&nbsp;</td>
+<td style="background-Color: #cc5555">Стоим</td>
+<td style="background-Color: #cc5555">Показ</td>
+<td style="background-Color: #cc5555">Клик</td>
+<td style="background-Color: #cc5555">CTR</td>
+<td style="background-Color: #cc9700">Стоим</td>
+<td style="background-Color: #cc9700">Показ</td>
+<td style="background-Color: #cc9700">Клик</td>
+<td style="background-Color: #cc9700">CTR</td>
+<td style="background-Color: #55cc55">Стоим</td>
+<td style="background-Color: #55cc55">Показ</td>
+<td style="background-Color: #55cc55">Клик</td>
+<td style="background-Color: #55cc55">CTR</td>
+<td style="background-Color: #5555cc">&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+</thead>
+<tbody>
+{% for camp_id in camps %}
+
+<tr class="row_data">
+<td nowrap valign="top">
+<a href="/campaign?cid={{ camp_id.CampaignID }}" target="_blank"><img src="/static/images/information.png" border="0" style="float: left; margin: 4px 7px 0 0" /></a> 
+<span class="camp_info">{{ camp_id.Name }}</span><Br /><span>
+{% if (camp_id.days_rest <= 5) %}
+	{% if (camp_id.days_rest <= 2) %}
+		<font color=red>Осталось на {{ camp_id.days_rest }} дней</font>
+	{% else %}
+		<font color=gold>Осталось на {{ camp_id.days_rest }} дней</font>
+	{% endif %}
+{% else %}
+Осталось на {{ camp_id.days_rest }} дней
+{% endif %}
+</span>
+<div class="camp_info_box">
+Выписать счет на <input type="text" size="2" value="{{ camp_id.last_invoice }}" /> <input type="button" value="Получить" class="get_invoice" camp_id="{{ camp_id.CampaignID }}" />
+</div>
+</td>
+<td><div class="graph"><img src="/static/images/graph.png" border="0" />
+	<div style="display: none">
+		<span class="sum">{{ camp_id.graph.sum }}</span>
+		<span class="clicks">{{ camp_id.graph.clicks }}</span>
+		<span class="per">{{ camp_id.graph.per }}</span>
+		<span class="ctr">{{ camp_id.graph.ctr }}</span>
+		<span class="shows">{{ camp_id.graph.shows }}</span>
+		<span class="stop">{{ camp_id.graph.stop }}</span>
+		<span class="camp_title">{{ camp_id.Name }}</span>
+	</div>
+</div></td>
+<td align="right">{{ camp_id.Rest }}</td>
+<td nowrap><input type="text" size="2" value="{{ camp_id.control_money }}" camp_id="{{ camp_id.CampaignID }}" class="camp_control" /><div class="per_bar" style="background: #6699cc url('/static/images/back.png') no-repeat -{{ camp_id.todayPer }}px 0px">
+	{{ camp_id.todayPercent }}%
+</div>
+</td>
+<td>
+<div class="btn_date">{{ camp_id.days_rest }}</div>
+<div class="dlg_date"></div>
+</td>
+<td nowrap>{{ camp_id.todaySumTotal }} ({{ camp_id.todayPerClick }} 
+{% if (camp_id.trend == "up") %}
+<font color=green>&darr;</font>
+{% elif (camp_id.trend == "down") %}
+<font color=red>&uarr;</font>
+{% else %}
+<font color=gold>&harr;</font>
+{% endif %}
+
+)<div class="hidden_div"><span>{{ camp_id.todaySumContext }}</span></div></td>
+<td>{{ camp_id.todayShowsSearch }}<div class="hidden_div"><span>{{ camp_id.todayShowsContext }}</span></div></td>
+<td>{{ camp_id.todayClicksSearch }}<div class="hidden_div"><span>{{ camp_id.todayClicksContext }}</span></div></td>
+<td valign="top" align="left">{{ camp_id.todayCTR }}</td>
+
+<td nowrap>{{ camp_id.yestodaySumTotal }} ({{ camp_id.yestodayPerClick }})<div class="hidden_div"><span>{{ camp_id.yestodaySumContext }}</span></div></td>
+<td>{{ camp_id.yestodayShowsSearch }}<div class="hidden_div"><span>{{ camp_id.yestodayShowsContext }}</span></div></td>
+<td>{{ camp_id.yestodayClicksSearch }}<div class="hidden_div"><span>{{ camp_id.yestodayClicksContext }}</span></div></td>
+<td valign="top" align="left">{{ camp_id.yestodayCTR }}</td>
+
+<td nowrap>{{ camp_id.SumTotal }} ({{ camp_id.PerClickTotal }})<div class="hidden_div"><span>{{ camp_id.SumContext }}</span></div></td>
+<td>{{ camp_id.ShowsTotal }}<div class="hidden_div"><span>{{ camp_id.ShowsContext }}</span></div></td>
+<td>{{ camp_id.ClicksTotal }}<div class="hidden_div"><span>{{ camp_id.ClicksContext }}</span></div></td>
+<td valign="top" align="left">{{ camp_id.CTR }}</td>
+
+<td nowrap>
+<a href="/getstat?cid={{ camp_id.CampaignID }}&int=yestoday" target="_blank"><img src="/static/images/yestoday.png" border="0" /></a> <a href="/getstat?cid={{ camp_id.CampaignID }}&int=week" target="_blank"><img src="/static/images/week.png" border="0" /></a></td>
+
+<td><div class="status">{{ camp_id.Status }}
+{% if camp_id.stop is not defined %}
+{% else %}
+<div class="stoptime">{{ camp_id.stop }}</div>
+{% endif %}
+</div></td>
+<td>{% if (camp_id.StatusShow=="Yes") %}
+<a href='/stopcampaign?camp_id={{ camp_id.CampaignID }}' style='color: red'><div class="stop_button"></div></a>
+{% else %}
+<a href='/startcampaign?camp_id={{ camp_id.CampaignID }}' style='color: green'><div class="start_button"></div></a>
+{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table><br />
+<img src="http://code.google.com/appengine/images/appengine-silver-120x30.gif" alt="Технология Google App Engine" align="right" style="margin: 0px 15px 15px 0" />
+</body>
+</html>

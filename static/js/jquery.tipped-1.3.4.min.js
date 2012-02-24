@@ -1,0 +1,20 @@
+/******
+ * Tipped: A tooltip plugin for jQuery
+ * http://www.augustana.ualberta.ca/tls/help/foss/tipped
+ *
+ * Copyright 2010, University of Alberta
+ *
+ * Tipped is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * Tipped is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License v2
+ * along with Tipped.  If not, see <http://www.gnu.org/licenses/gpl-2.0.html>
+ */
+(function(b){function f(a,c){$tip_content.html(c);i(a);$tip.data("showing",true).data("original",a).show()}function i(a){var c=a.data("tipped").settings;$tip.css({left:0,top:0});var e=a.offset(),d=e.left+a.outerWidth()+c.marginX;a=e.top+a.outerHeight()+c.marginY;c=d+$tip.outerWidth();e=a+$tip.outerHeight();var g=b(window).width()+b(window).scrollLeft()-5,h=b(window).height()+b(window).scrollTop()-5;d=c>g?d-(c-g):d;a=e>h?a-(e-h):a;$tip.css({left:d,top:a})}var j={ajaxType:"POST",cache:false,cached:{}, closer:"Close",marginX:10,marginY:10,mode:"hover",params:{},source:"title",themeroller:false,throbber:"",url:""};window.$tip={};window.$tip_content={};b(document).ready(function(){$tip=b("#tipped").length?b("#tipped"):b('<div id = "tipped"><div id = "tipped_content"></div></div>').appendTo(document.body).data("showing",false);$tip_content=b("#tipped_content")});b.fn.tipped=function(a){this.each(function(){$target=b(this);a=b.extend({},j,a);$target.data("tipped",{settings:a});a.themeroller?$tip.addClass("ui-helper-hidden ui-widget ui-dialog ui-corner-all"): $tip.removeClass("ui-helper-hidden ui-widget ui-dialog ui-corner-all");if(a.mode=="hover")$target.mouseover(function(){b.fn.tipped.showTip(b(this))}).mouseout(function(){b.fn.tipped.hideTip(b(this))});else if(a.mode=="click"){b("#tipped-closer").length==0&&$tip.append('<div id = "tipped-closer-wrapper"><span id = "tipped-closer">'+a.closer+"</span>");a.themeroller?b("#tipped-closer").addClass("ui-button ui-state-hover ui-state-default").hover(function(){b(this).addClass("ui-state-hover")},function(){b(this).removeClass("ui-state-hover")}).mousedown(function(){b(this).addClass("ui-state-active")}).mouseup(function(){b(this).removeClass("ui-state-active")}): b("#tipped-closer").removeClass("ui-button ui-state-hover ui-state-default");$target.click(function(){$this=b(this);b.fn.tipped.showTip($this);b("#tipped-closer").click(function(){b.fn.tipped.hideTip($this)})})}});return this};b.fn.tipped.showTip=function(a){var c=a.data("tipped").settings,e=$tip.data("cached");c.mode!="click"?b("#tipped-closer-wrapper").hide():b("#tipped-closer-wrapper").show();if(a.data("tipped").title===undefined){a.data("tipped",b.extend(a.data("tipped"),{title:a.attr("title")})); a.removeAttr("title")}if(c.source==="url")if(!c.cache||e===undefined||e[c.url]===undefined){var d={};if(typeof c.params=="function")d=c.params(a);else if(typeof c.params=="object")d=c.params;b.ajax({beforeSend:function(){f(a,"<img src = "+c.throbber+' alt = "Loading..." />')},data:d,error:function(){f(a,"Unable to retrieve contents")},success:function(g){$tip.data("showing")&&f(a,g);if(c.cache){var h={};h[c.url]=g;e=b.extend(e,h);$tip.data("cached",e)}},type:c.ajaxType,url:c.url})}else f(a,e[c.url]); else{d="";if(c.source==="title")d=a.data("tipped").title;else if(typeof c.source=="string")d=c.source;else if(typeof c.source=="function")d=c.source(a);else if(typeof c.source=="object")d=c.source.html();f(a,d)}};b.fn.tipped.hideTip=function(a){a.attr("title",a.data("tipped").title);$tip.data("showing",false).data("original","").hide();$tip_content.html("")};b.extend({getTrigger:function(){return $tip.data("original")}})})(jQuery);

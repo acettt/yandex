@@ -1,0 +1,165 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+<title>Директ</title>
+
+<style>
+body {
+	font:  12px/14px Tahoma; 
+	padding: 0; 
+	margin:  0; 
+}
+table {
+	border-collapse: collapse;
+	font:  12px/14px Tahoma; 
+	margin:  0; 
+	padding:  0; 
+}
+table td {
+	padding:  3px 20px 3px 20px; 
+}
+
+table thead td {
+	background-Color:  #777; 
+	color:  white; 
+}
+input {
+	border: solid 1px #aaa; 
+}
+</style>
+
+<link rel = "stylesheet" type = "text/css" href = "/static/css/tipped.css" />
+
+
+<script src="/static/js/jquery-1.4.2.min.js" type="text/javascript"></script>
+<script src="/static/js/jquery.tipped-1.3.4.min.js" type="text/javascript"></script>
+<script src="/static/js/json2.js" type="text/javascript"></script>
+
+</head>
+<body>
+
+<div style="text-align: right; padding: 5px 20px 5px 0">
+	<input type="button" value="Сохранить" class="save" >
+</div>
+
+<table width="100%">
+<tbody>
+{% for ban in bans %}
+<tr>
+<td width="30%" valign="top">
+<a href="http://{{ ban.Href }}" target="_blank"><b>{{ ban.Title }}</b></a><Br />
+{{ ban.Text }}<br />
+<span style="color: green">{{ ban.Domain }}</span>
+</td>
+<td valign="top">
+	<table width="100%">
+	<thead>
+	<tr>
+		<td width="30%">Фраза</td>
+		<td nowrap>Контроль бюджета</td>
+		<td align="right">Показы</td>
+		<td align="right">Клики</td>
+		<td align="right">CTR</td>
+		<td>Цена</td>
+		<td nowrap align="right">Цена на поиске</td>
+		<td align="right">Цены</td>
+	</tr>
+	</thead>
+	<tbody>
+	{% for phr in ban["items"] %}
+	<tr>
+		<td valign="top" class="phrase" tooltip="<div style='height: 400px; overflow: auto'>
+			<table><tr><td valign='top'><b>Ставки</b><br /><br />
+			{% for price in phr.Prices %}{{ price }}<Br />{% endfor %}
+			</td><td valign='top'>
+			<b>Зона покрытия</b><br /><br />
+			<table>
+			{% for cov in phr.Coverage %}
+				<tr><td>{{ cov.Price }}</td><td>{{ cov.Probability }}</td></tr>
+			{% endfor %}</table>
+			</td></tr></table></div>">{{ phr.Phrase }}</td>
+
+		<td valign="top"><input type="checkbox"> <input type="text" size="4" /></td>
+
+<!--
+		<td valign="top" width="10%"></td>
+-->
+
+		<td valign="top" width="10%" align="right">{{ phr.Shows }}</td>
+		<td valign="top" width="10%" align="right">{{ phr.Clicks }}</td>
+		<td valign="top" align="right">{{ phr.ctr }}%</td>
+		<td valign="top" width="10%"><input type="text" class="price" oldv="{{ phr.Price }}" value="{{ phr.Price }}" phrid="{{ phr.PhraseID }}" campid="{{ phr.CampaignID }}" banid="{{ phr.BannerID }}" size="4" /></td>
+		<td valign="top" width="10%" align="right">{{ phr.CurrentOnSearch }}</td>
+		<td valign="top" width="10%" align="right">
+			{{ phr.PremiumMax }}<br />
+			{{ phr.PremiumMin }}<br />
+			{{ phr.Max }}<br />
+			{{ phr.Min }}
+		</td>
+	</tr>
+	{% endfor %}
+	</tbody>
+	</table>
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<script>
+var res="";
+var ii=0; 
+$(document).ready(function(){
+	$(".save").click(function(){
+		res="";
+		ii=0;
+
+		outarr=new Array()
+
+		$(".price").each(function(){
+			if($(this).attr("value")!=$(this).attr("oldv"))
+			{
+				outarr[outarr.length]=new Array($(this).attr("phrid"),$(this).attr("campid"),$(this).attr("banid"),$(this).attr("value"));
+			};
+		});
+
+		if(outarr.length>0){		
+			text = JSON.stringify(outarr);
+
+			$.ajax({
+				type: 'POST',
+				url: '/savecampaign', 
+				data: "arr="+text, 
+				success: function(msg){
+					if(msg=="1")
+					{ 
+						alert("Сохранение произошло успешно"); 
+						window.location.reload(false);
+					} else if(msg=="-1")
+					{
+						alert("Произошла ошибка на нашем сервере, обратитесь к администратору"); 
+					} else {
+						alert("Произошла ошибка на сервере Яндекса, код: "+msg); 
+					}; 
+				}
+			}); 
+		};
+	}); 
+
+	$(".price").change(function(){
+		if($(this).attr("value")!=$(this).attr("oldv"))
+		{
+			$(this).css("background-Color","yellow");
+		} else {
+			$(this).css("background-Color","white");
+		};
+	});
+	$("td.phrase").tipped({mode: 'click',source: function($obj){	
+		return $obj.attr("tooltip");
+	}
+	});
+}); 
+</script>
+</body>
+</html>
