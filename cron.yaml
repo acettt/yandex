@@ -1,0 +1,7 @@
+cron:
+- description: update stat summary
+  url: /updatestat
+  schedule: every 9 minutes
+- description: update rest
+  url: /updaterest
+  schedule: every 55 minutes
