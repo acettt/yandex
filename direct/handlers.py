@@ -8,13 +8,14 @@ from xml.dom.minidom import parseString
 from google.appengine.ext import db
 from google.appengine.api.labs import taskqueue
 from google.appengine.api import memcache, mail
-import json, logging
+import json, logging, yaml, os
 
 _timezone=timedelta(hours=4)
-ya_login="luk-direct"
-ya_pass="Wq21150i"
-ya_token="605de565b31f4063aa0ba11d9adb5dc1"
-ya_stoken="dddd7371f0f9456a915c61f0e859009c"
+cfg=yaml.load(open("config/direct.yaml"))
+ya_login=cfg["login"]
+ya_pass=cfg["password"]
+ya_token=cfg["token"]
+ya_stoken=cfg["secret_token"]
 
 def implode(lists):
 	str=""
@@ -507,6 +508,7 @@ class GetStatHandler(RequestHandler, Jinja2Mixin):
         return self.render_response('stat.html', **context)
 class IndexHandler(RequestHandler, Jinja2Mixin):
     def get(self):
+    
 	ddd=datetime.today()
 	cd=(ddd+_timezone).strftime("%Y-%m-%d")
 	dates=[]
