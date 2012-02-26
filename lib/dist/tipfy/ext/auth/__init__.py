@@ -496,16 +496,16 @@ def _login_required(handler):
 def _user_required(handler):
     """Implementation for user_required and UserRequiredMiddleware."""
     if not handler.auth_session:
-        return redirect(handler.auth_login_url())
+        return handler.redirect(handler.auth_login_url())
 
     if not handler.auth_current_user:
-        return redirect(handler.auth_signup_url())
+        return handler.redirect(handler.auth_signup_url())
 
 
 def _admin_required(handler):
     """Implementation for admin_required and AdminRequiredMiddleware."""
     if not handler.auth_session:
-        return redirect(handler.auth_login_url())
+        return handler.redirect(handler.auth_login_url())
 
     if not handler.auth_is_admin:
         abort(403)

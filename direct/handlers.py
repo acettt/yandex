@@ -9,7 +9,7 @@ from google.appengine.ext import db
 from google.appengine.api.labs import taskqueue
 from google.appengine.api import memcache, mail
 import json, logging, yaml, os
-from tipfy.ext.auth import AppEngineAuthMixin, login_required
+from tipfy.ext.auth import AppEngineAuthMixin, login_required, admin_required
 
 _timezone=timedelta(hours=4)
 cfg=yaml.load(open("config/direct.yaml"))
@@ -103,100 +103,108 @@ def getCampByID(camp_id):
 	
 	return tcamps.get(str(camp_id),None)
 	
-class StopCampaignHandler(RequestHandler, Jinja2Mixin):
-    def get(self):
-	cid=self.request.args.get('camp_id')
-	obj=mycacher.get("obj")
-	if obj is None:
-		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
-		mycacher.set("obj",obj)
-	arr=obj.StopCampaign(cid)
-	memcache.delete("camps2")
-	return self.redirect('/')
+class StopCampaignHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
+	@login_required
+	def get(self):
+		cid=self.request.args.get('camp_id')
+		obj=mycacher.get("obj")
+		if obj is None:
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
+			mycacher.set("obj",obj)
+		arr=obj.StopCampaign(cid)
+		memcache.delete("camps2")
+		return self.redirect('/')
 
-class StartCampaignHandler(RequestHandler, Jinja2Mixin):
-    def get(self):
-	cid=self.request.args.get('camp_id')
-	obj=mycacher.get("obj")
-	if obj is None:
-		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
-		mycacher.set("obj",obj)
-	obj.ResumeCampaign(cid)
-	memcache.delete("camps2")
-	return self.redirect('/')
+class StartCampaignHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
+	@login_required
+	def get(self):
+		cid=self.request.args.get('camp_id')
+		obj=mycacher.get("obj")
+		if obj is None:
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
+			mycacher.set("obj",obj)
+		obj.ResumeCampaign(cid)
+		memcache.delete("camps2")
+		return self.redirect('/')
 
-class ChangeControlHandler(RequestHandler, Jinja2Mixin):
-    def post(self):
-	cid=self.request.form.get('camp_id')
-	sum=int(self.request.form.get('change_control'))
-	yacamps = getCampByID(cid)
-	if yacamps is None:
-		yacamps = YaCampany(camp_id=str(cid),amount=sum,key_name=str(cid))
+class ChangeControlHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
+	@login_required
+	def post(self):
+		cid=self.request.form.get('camp_id')
+		sum=int(self.request.form.get('change_control'))
+		yacamps = getCampByID(cid)
+		if yacamps is None:
+			yacamps = YaCampany(camp_id=str(cid),amount=sum,key_name=str(cid))
+			yacamps.put()
+			resetSysCamps()
+		else:
+			yacamps.amount=sum
+			yacamps.put()
+			resetSysCamps()
+		return Response(str(cid)+'_'+str(sum))
+class CreateInvoiceHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
+	@login_required
+	def post(self):
+		cid=int(self.request.form.get('get_invoice'))
+		amn=round(float(self.request.form.get('amount'))/30,4)
+		td=datetime.today()+_timezone
+		opnum=td.year*365*60*60+td.month*30*60*60+td.day*60*60+td.hour*60+td.minute
+		yacamps = getCampByID(cid)
+		if yacamps is None:
+			yacamps = YaCampany(camp_id=str(cid),amount=0,key_name=str(cid))
+			yacamps.put()
+			resetSysCamps()
+	#	logging.debug('create invoice '+str(cid)+' amount '+str(amn))
+		yacamps.last_invoice=int(amn*30)
 		yacamps.put()
-		resetSysCamps()
-	return Response(str(cid)+'_'+str(sum))
-class CreateInvoiceHandler(RequestHandler, Jinja2Mixin):
-    def post(self):
-	cid=int(self.request.form.get('get_invoice'))
-	amn=round(float(self.request.form.get('amount'))/30,4)
-	td=datetime.today()+_timezone
-	opnum=td.year*365*60*60+td.month*30*60*60+td.day*60*60+td.hour*60+td.minute
-	yacamps = getCampByID(cid)
-	if yacamps is None:
-		yacamps = YaCampany(camp_id=str(cid),amount=0,key_name=str(cid))
-		yacamps.put()
-		resetSysCamps()
-#	logging.debug('create invoice '+str(cid)+' amount '+str(amn))
-	yacamps.last_invoice=int(amn*30)
-	yacamps.put()
-	obj=mycacher.get("obj")
-	if obj is None:
-		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
-		mycacher.set("obj",obj)
-	logging.debug('create invoice '+str(cid)+', amount '+str(amn))
-	ret=obj.CreateInvoice(cid,amn,opnum)
-	logging.debug('invoice url '+ret)
-	memcache.delete("ams")
-	return Response(ret)
+		obj=mycacher.get("obj")
+		if obj is None:
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
+			mycacher.set("obj",obj)
+		logging.debug('create invoice '+str(cid)+', amount '+str(amn))
+		ret=obj.CreateInvoice(cid,amn,opnum)
+		logging.debug('invoice url '+ret)
+		memcache.delete("ams")
+		return Response(ret)
 class ControlCampaignHandler(RequestHandler, Jinja2Mixin):
-    def post(self):
-	camp_id=self.request.form.get('camp_id')
-	amn=float(self.request.form.get('amount'))
-	plan=float(self.request.form.get('plan'))
-	logging.debug('current amount '+str(amn)+', total amount '+str(plan))
-	plan2=plan*0.9
-	obj=mycacher.get("obj")
-	if obj is None:
-		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
-		mycacher.set("obj",obj)
-	param=obj.GetCampaignParams(camp_id)
-
-	if amn>plan2:
-		cd=datetime.today()+_timezone
-		if param["StatusShow"]=="Yes":
-			logging.debug('Stop campaign '+camp_id)
-			obj.StopCampaign(camp_id)
-			yacamps = getCampByID(camp_id)
-			report=YaCampanyLogs(camp_id=yacamps,amount=int(amn),plan=int(plan),act="stop")
-			report.put()
-			memcache.delete("stopd"+cd.strftime("%Y-%m-%d"))
-			memcache.delete("camps2")
-			memcache.delete("stoped")
-		memcache.set("stop_camp_"+str(camp_id)+"_date_"+cd.strftime("%Y-%m-%d"),amn,7200)
-		logging.debug("stop_camp_"+str(camp_id)+"_date_"+cd.strftime("%Y-%m-%d"))
-	else:
-		if (plan>0) and (param["StatusShow"]=="No"):
-			dt=datetime.today()+_timezone
-			if dt.hour<10:
-				logging.debug('Start campaign '+camp_id)
-				obj.ResumeCampaign(camp_id)
+	def post(self):
+		camp_id=self.request.form.get('camp_id')
+		amn=float(self.request.form.get('amount'))
+		plan=float(self.request.form.get('plan'))
+		logging.debug('current amount '+str(amn)+', total amount '+str(plan))
+		plan2=plan*0.9
+		obj=mycacher.get("obj")
+		if obj is None:
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
+			mycacher.set("obj",obj)
+		param=obj.GetCampaignParams(camp_id)
+	
+		if amn>plan2:
+			cd=datetime.today()+_timezone
+			if param["StatusShow"]=="Yes":
+				logging.debug('Stop campaign '+camp_id)
+				obj.StopCampaign(camp_id)
 				yacamps = getCampByID(camp_id)
-				report=YaCampanyLogs(camp_id=yacamps,amount=int(amn),plan=int(plan),act="start")
+				report=YaCampanyLogs(camp_id=yacamps,amount=int(amn),plan=int(plan),act="stop")
 				report.put()
-				memcache.delete("stopd"+dt.strftime("%Y-%m-%d"))
+				memcache.delete("stopd"+cd.strftime("%Y-%m-%d"))
 				memcache.delete("camps2")
 				memcache.delete("stoped")
-	return Response('1')
+			memcache.set("stop_camp_"+str(camp_id)+"_date_"+cd.strftime("%Y-%m-%d"),amn,7200)
+			logging.debug("stop_camp_"+str(camp_id)+"_date_"+cd.strftime("%Y-%m-%d"))
+		else:
+			if (plan>0) and (param["StatusShow"]=="No"):
+				dt=datetime.today()+_timezone
+				if dt.hour<10:
+					logging.debug('Start campaign '+camp_id)
+					obj.ResumeCampaign(camp_id)
+					yacamps = getCampByID(camp_id)
+					report=YaCampanyLogs(camp_id=yacamps,amount=int(amn),plan=int(plan),act="start")
+					report.put()
+					memcache.delete("stopd"+dt.strftime("%Y-%m-%d"))
+					memcache.delete("camps2")
+					memcache.delete("stoped")
+		return Response('1')
 class UpdateStatHandler(RequestHandler, Jinja2Mixin):
 	def get(self):
 		logging.debug('1Start campanies update stat')
@@ -240,273 +248,278 @@ class UpdateRestHandler(RequestHandler, Jinja2Mixin):
 			camps[camp].put()
 		return Response('1')
 class UpdateCampanyStatHandler(RequestHandler, Jinja2Mixin):
-    def parseResponse(self,resp):
-	dom=parseString(resp)
-	rows=dom.getElementsByTagName("phrase")
-	dicts={}
-	for row in rows:
-		dicts[row.getAttribute("phraseID")]=row.getAttribute("value")
-
-	rows=dom.getElementsByTagName("row")
-	logging.debug('count xml rows '+str(len(rows)))
-	out={}
-	for row in rows:
-		stat={"sum_search":"","sum_context":"","shows_search":"","shows_context":"","clicks_search":"","clicks_context":"","sum":"","shows":"","clicks":""}
-		for key in stat:
-			stat[key]=row.getAttribute(key)
-		sdate=row.getAttribute("statDate")
-		if sdate not in out:
-			out[sdate]={"items": {}}
-		phrID=row.getAttribute("phraseID")
-		out[sdate]["items"][phrID]=stat
-		out[sdate]["dicts"]=dicts
-	return out
+	def parseResponse(self,resp):
+		dom=parseString(resp)
+		rows=dom.getElementsByTagName("phrase")
+		dicts={}
+		for row in rows:
+			dicts[row.getAttribute("phraseID")]=row.getAttribute("value")
 	
-    def post(self):
-	obj=mycacher.get("obj")
-	if obj is None:
-		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
-		mycacher.set("obj",obj)
-	_camps=self.request.form.get('camp_id')
-	camps=_camps.split(",")
-	camp_id=camps[0]
-	logging.debug('Start camp_id stat='+camp_id)
-	yacamps = getCampByID(camp_id)
-	if yacamps is None:
+		rows=dom.getElementsByTagName("row")
+		logging.debug('count xml rows '+str(len(rows)))
+		out={}
+		for row in rows:
+			stat={"sum_search":"","sum_context":"","shows_search":"","shows_context":"","clicks_search":"","clicks_context":"","sum":"","shows":"","clicks":""}
+			for key in stat:
+				stat[key]=row.getAttribute(key)
+			sdate=row.getAttribute("statDate")
+			if sdate not in out:
+				out[sdate]={"items": {}}
+			phrID=row.getAttribute("phraseID")
+			out[sdate]["items"][phrID]=stat
+			out[sdate]["dicts"]=dicts
+		return out
+	
+
+	def post(self):
+		obj=mycacher.get("obj")
+		if obj is None:
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
+			mycacher.set("obj",obj)
+		_camps=self.request.form.get('camp_id')
+		camps=_camps.split(",")
+		camp_id=camps[0]
+		logging.debug('Start camp_id stat='+camp_id)
+		yacamps = getCampByID(camp_id)
+		if yacamps is None:
+			if len(camps)>1:
+				taskqueue.add(url='/updatecampanystat', params={'camp_id': implode(camps[1:])})
+				logging.debug('start new camps '+implode(camps[1:]))
+			else:
+				memcache.delete("stats")
+			return Response('1')
+	
+		end_date=datetime.today()+_timezone
+		end_date_str=end_date.strftime("%Y-%m-%d")
+		cnt_days=memcache.get("camp_id_"+str(camp_id)+"_date_"+end_date_str)
+	
+		if cnt_days is None or cnt_days>0:
+			cnt_days=15
+			res=db.GqlQuery("select * from YaReport where camp_id=:1 and rtype=0 order by date DESC",yacamps)
+			cnt=res.count()
+			if cnt!=0:
+				items=res.fetch(1)
+				for item in items:
+					cd=item.date
+	
+				dd1=date(end_date.year,end_date.month,end_date.day)
+				td=dd1-cd
+				cnt_days=td.days-1
+			if cnt_days<0:
+				cnt_days=0
+			memcache.set("camp_id_"+str(camp_id)+"_date_"+end_date_str,cnt_days,7200)
+		else:
+			if cnt_days<0:
+				cnt_days=0
+	
+		logging.debug('count days '+str(cnt_days))
+		start_date=end_date-timedelta(days=cnt_days)
+		rep_id=obj.CreateNewReport(camp_id,start_date.strftime("%Y-%m-%d"),end_date_str,["clDate","clPhrase"])
+	
+		if rep_id is None:
+			logging.debug('Clear report')
+			obj.ClearReport(camp_id)
+			rep_id=obj.CreateNewReport(camp_id,start_date.strftime("%Y-%m-%d"),end_date_str,["clDate","clPhrase"])
+			if rep_id is None:
+				logging.debug('error in creating report')
+			else:
+				logging.debug('create report id '+str(rep_id))
+		else:
+			logging.debug('create report id '+str(rep_id))
+	
+		rtxt=obj.GetReport(camp_id,rep_id)
+		obj.DeleteReport(rep_id)
+	
+		if rtxt is not None:
+			out=self.parseResponse(rtxt)
+		else:
+			logging.debug('error in reading report')
+			out={}
+		logging.debug('count stat rows '+str(len(out)))
+		for sdate in out:
+			logging.debug('save date '+str(sdate))
+			notrel={"shows_search": 0.0,"shows_context": 0.0,"clicks_search": 0.0,"clicks_context": 0.0}
+			tmp={"sum_search": 0.0,"sum_context": 0.0,"shows_search": 0.0,"shows_context": 0.0,"clicks_search": 0.0,"clicks_context": 0.0}
+			for phr in out[sdate]["items"]:
+				if phr!=1:
+					for key in notrel:
+						notrel[key]+=float(out[sdate]["items"][phr][key])
+			for key in tmp:
+				tmp[key]=sum(float(out[sdate]["items"][phr][key]) for phr in out[sdate]["items"])
+			for key in notrel:
+				tmp[key+"_notrel"]=notrel[key]
+			_dicts=json.dumps(out[sdate]["dicts"])
+			full_report=json.dumps(out[sdate]["items"], ensure_ascii=False).encode('utf8')
+			short_report=json.dumps(tmp, ensure_ascii=False).encode('utf8')
+			d1=sdate.split("-")
+			cd=date(int(d1[0]),int(d1[1]),int(d1[2]))
+			rt=0
+			sstop=memcache.get("stop_camp_"+str(camp_id)+"_date_"+sdate)
+			if (sdate==end_date_str) and ((sstop is None) or (sstop<yacamps.amount)) and ((float(tmp["sum_search"])+float(tmp["sum_context"]))>(float(yacamps.amount/2))):
+				rt=1
+				taskqueue.add(url='/controlcampaign', params={'camp_id': camp_id, "plan": yacamps.amount, "amount": (float(tmp["sum_search"])+float(tmp["sum_context"]))})
+				yacamps.last_amount=int(float(tmp["sum_search"])+float(tmp["sum_context"]))
+				yacamps.put()
+			report=YaReport(camp_id=yacamps,date=cd,rtype=rt,rep=full_report,shortrep=short_report,dicts=_dicts,key_name=(camp_id+"_"+sdate))
+			report.put()
+		if ((end_date_str not in out) or (len(out)==0)) and (yacamps.amount>0):
+			if yacamps.last_amount!=0:
+				yacamps.last_amount=0
+				yacamps.put()
+			param=obj.GetCampaignParams(camp_id)
+			if param["StatusShow"]=="No":
+				taskqueue.add(url='/controlcampaign', params={'camp_id': camp_id, "plan": yacamps.amount, "amount": 0})
 		if len(camps)>1:
 			taskqueue.add(url='/updatecampanystat', params={'camp_id': implode(camps[1:])})
-			logging.debug('start new camps '+implode(camps[1:]))
 		else:
 			memcache.delete("stats")
 		return Response('1')
-
-	end_date=datetime.today()+_timezone
-	end_date_str=end_date.strftime("%Y-%m-%d")
-	cnt_days=memcache.get("camp_id_"+str(camp_id)+"_date_"+end_date_str)
-
-	if cnt_days is None or cnt_days>0:
-		cnt_days=15
-		res=db.GqlQuery("select * from YaReport where camp_id=:1 and rtype=0 order by date DESC",yacamps)
-		cnt=res.count()
-		if cnt!=0:
-			items=res.fetch(1)
-			for item in items:
-				cd=item.date
-
-			dd1=date(end_date.year,end_date.month,end_date.day)
-			td=dd1-cd
-			cnt_days=td.days-1
-		if cnt_days<0:
-			cnt_days=0
-		memcache.set("camp_id_"+str(camp_id)+"_date_"+end_date_str,cnt_days,7200)
-	else:
-		if cnt_days<0:
-			cnt_days=0
-
-	logging.debug('count days '+str(cnt_days))
-	start_date=end_date-timedelta(days=cnt_days)
-	rep_id=obj.CreateNewReport(camp_id,start_date.strftime("%Y-%m-%d"),end_date_str,["clDate","clPhrase"])
-
-	if rep_id is None:
-		logging.debug('Clear report')
-		obj.ClearReport(camp_id)
-		rep_id=obj.CreateNewReport(camp_id,start_date.strftime("%Y-%m-%d"),end_date_str,["clDate","clPhrase"])
-		if rep_id is None:
-			logging.debug('error in creating report')
-		else:
-			logging.debug('create report id '+str(rep_id))
-	else:
-		logging.debug('create report id '+str(rep_id))
-
-	rtxt=obj.GetReport(camp_id,rep_id)
-	obj.DeleteReport(rep_id)
-
-	if rtxt is not None:
-		out=self.parseResponse(rtxt)
-	else:
-		logging.debug('error in reading report')
-		out={}
-	logging.debug('count stat rows '+str(len(out)))
-	for sdate in out:
-		logging.debug('save date '+str(sdate))
-		notrel={"shows_search": 0.0,"shows_context": 0.0,"clicks_search": 0.0,"clicks_context": 0.0}
-		tmp={"sum_search": 0.0,"sum_context": 0.0,"shows_search": 0.0,"shows_context": 0.0,"clicks_search": 0.0,"clicks_context": 0.0}
-		for phr in out[sdate]["items"]:
-			if phr!=1:
-				for key in notrel:
-					notrel[key]+=float(out[sdate]["items"][phr][key])
-		for key in tmp:
-			tmp[key]=sum(float(out[sdate]["items"][phr][key]) for phr in out[sdate]["items"])
-		for key in notrel:
-			tmp[key+"_notrel"]=notrel[key]
-		_dicts=json.dumps(out[sdate]["dicts"])
-		full_report=json.dumps(out[sdate]["items"], ensure_ascii=False).encode('utf8')
-		short_report=json.dumps(tmp, ensure_ascii=False).encode('utf8')
-		d1=sdate.split("-")
-		cd=date(int(d1[0]),int(d1[1]),int(d1[2]))
-		rt=0
-		sstop=memcache.get("stop_camp_"+str(camp_id)+"_date_"+sdate)
-		if (sdate==end_date_str) and ((sstop is None) or (sstop<yacamps.amount)) and ((float(tmp["sum_search"])+float(tmp["sum_context"]))>(float(yacamps.amount/2))):
-			rt=1
-			taskqueue.add(url='/controlcampaign', params={'camp_id': camp_id, "plan": yacamps.amount, "amount": (float(tmp["sum_search"])+float(tmp["sum_context"]))})
-			yacamps.last_amount=int(float(tmp["sum_search"])+float(tmp["sum_context"]))
-			yacamps.put()
-		report=YaReport(camp_id=yacamps,date=cd,rtype=rt,rep=full_report,shortrep=short_report,dicts=_dicts,key_name=(camp_id+"_"+sdate))
-		report.put()
-	if ((end_date_str not in out) or (len(out)==0)) and (yacamps.amount>0):
-		if yacamps.last_amount!=0:
-			yacamps.last_amount=0
-			yacamps.put()
-		param=obj.GetCampaignParams(camp_id)
-		if param["StatusShow"]=="No":
-			taskqueue.add(url='/controlcampaign', params={'camp_id': camp_id, "plan": yacamps.amount, "amount": 0})
-	if len(camps)>1:
-		taskqueue.add(url='/updatecampanystat', params={'camp_id': implode(camps[1:])})
-	else:
-		memcache.delete("stats")
-	return Response('1')
-class SaveCampaignHandler(RequestHandler, Jinja2Mixin):
-    def post(self):
-	arr=self.request.form.get('arr')
-	res=json.loads(arr)
-	param=[]
-	for key in res:
-		phrid,campid,banid,value=key
-		param.append({"PhraseID":phrid,"BannerID":banid,"CampaignID":campid,"Price":value,"AutoBroker":"Yes"})
-	obj=mycacher.get("obj")
-	if obj is None:
-		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
-		mycacher.set("obj",obj)
-	obj.UpdatePrices(param)
-	return Response('1')
-class CampaignHandler(RequestHandler, Jinja2Mixin):
-    def get(self):
-	camp_id=int(self.request.args.get('cid'))
-	obj=mycacher.get("obj")
-	if obj is None:
-		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
-		mycacher.set("obj",obj)
-	banners=obj.GetBanners(camp_id)
-	phrs=obj.GetBannerPhrases([key["BannerID"] for key in banners])
-	bans={}
-	for ban in banners:
-		bans[ban["BannerID"]]=ban
-
-	for phr in phrs:
-		phr["Phrase"]=phr["Phrase"].split("-")[0]
-		if phr["Shows"]>0:
-			phr["ctr"]=round(phr["Clicks"]/phr["Shows"]*100,2)
-		else:
-			phr["ctr"]=0
-		bans[phr["BannerID"]]["items"]=bans[phr["BannerID"]].get("items",[])
-		bans[phr["BannerID"]]["items"].append(phr)		
-        context = {
-            'bans': bans.values()
-        }
-        return self.render_response('campaign.html', **context)
-class FlushMemcacheHandler(RequestHandler, Jinja2Mixin):
-    def get(self):
-	memcache.flush_all()
-	return Response('1')
-class GetStatHandler(RequestHandler, Jinja2Mixin):
-    def get(self):
-	camp_id=str(self.request.args.get('cid'))
-	interval=self.request.args.get('int')
-
-	obj=mycacher.get("obj")
-	if obj is None:
-		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
-		mycacher.set("obj",obj)
-	yacamps = getCampByID(camp_id)
-	dicts={}
-	stats=[]
-	if interval=="yestoday":
-		res=YaReport.all()
-		res.filter("date > ",(datetime.today()-timedelta(days=2)+_timezone))
-		res.filter("camp_id",yacamps)
-		data=json.loads(res[0].rep)
-		_dicts=json.loads(res[0].dicts)
-		for key in _dicts:
-			dicts[key]=_dicts[key]
-		_data={}
-		for key in data:
-			_data[dicts[key]]=data[key]
-		stats.append(_data)
-	else:
-		res=YaReport.all()
-		res.filter("date >=",(datetime.today()-timedelta(days=8)+_timezone))
-		res.filter("camp_id",yacamps)
-
-		for stat in res:
-			data=json.loads(stat.rep)
-			_dicts=json.loads(stat.dicts)
+class SaveCampaignHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
+	@login_required
+	def post(self):
+		arr=self.request.form.get('arr')
+		res=json.loads(arr)
+		param=[]
+		for key in res:
+			phrid,campid,banid,value=key
+			param.append({"PhraseID":phrid,"BannerID":banid,"CampaignID":campid,"Price":value,"AutoBroker":"Yes"})
+		obj=mycacher.get("obj")
+		if obj is None:
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
+			mycacher.set("obj",obj)
+		obj.UpdatePrices(param)
+		return Response('1')
+class CampaignHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
+	@login_required
+	def get(self):
+		camp_id=int(self.request.args.get('cid'))
+		obj=mycacher.get("obj")
+		if obj is None:
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
+			mycacher.set("obj",obj)
+		banners=obj.GetBanners(camp_id)
+		phrs=obj.GetBannerPhrases([key["BannerID"] for key in banners])
+		bans={}
+		for ban in banners:
+			bans[ban["BannerID"]]=ban
+	
+		for phr in phrs:
+			phr["Phrase"]=phr["Phrase"].split("-")[0]
+			if phr["Shows"]>0:
+				phr["ctr"]=round(phr["Clicks"]/phr["Shows"]*100,2)
+			else:
+				phr["ctr"]=0
+			bans[phr["BannerID"]]["items"]=bans[phr["BannerID"]].get("items",[])
+			bans[phr["BannerID"]]["items"].append(phr)		
+	        context = {
+	            'bans': bans.values()
+	        }
+	        return self.render_response('campaign.html', **context)
+class FlushMemcacheHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
+	@login_required
+	def get(self):
+		memcache.flush_all()
+		return Response('1')
+class GetStatHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
+	@login_required
+	def get(self):
+		camp_id=str(self.request.args.get('cid'))
+		interval=self.request.args.get('int')
+	
+		obj=mycacher.get("obj")
+		if obj is None:
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
+			mycacher.set("obj",obj)
+		yacamps = getCampByID(camp_id)
+		dicts={}
+		stats=[]
+		if interval=="yestoday":
+			res=YaReport.all()
+			res.filter("date > ",(datetime.today()-timedelta(days=2)+_timezone))
+			res.filter("camp_id",yacamps)
+			data=json.loads(res[0].rep)
+			_dicts=json.loads(res[0].dicts)
 			for key in _dicts:
 				dicts[key]=_dicts[key]
 			_data={}
 			for key in data:
 				_data[dicts[key]]=data[key]
 			stats.append(_data)
-	out={}
-	for d in stats:
-		for banid in d:
-			out[banid]=out.get(banid,{})
-			for p in d[banid]:
-				out[banid][p]=out[banid].get(p,0.0)
-				out[banid][p]+=float(d[banid][p])
-
-	total={"sum": 0.0,"shows": 0.0,"clicks": 0.0,"sum_search": 0.0,"sum_context": 0.0,"clicks_search": 0.0,"clicks_context": 0.0,"shows_search": 0.0,"shows_context": 0.0}
-	for p in total:
-		total[p]=sum(out[banid][p] for banid in out)
-
-	if total["clicks_search"]>0:
-		total["per_search"]=round(total["sum_search"]/total["clicks_search"],2)
-	else:
-		total["per_search"]=0.0
-	if total["clicks_context"]>0:
-		total["per_context"]=round(total["sum_context"]/total["clicks_context"],2)
-	else:
-		total["per_context"]=0.0
-	if total["clicks"]>0:
-		total["per"]=round(total["sum"]/total["clicks"],2)
-	else:
-		total["per"]=0.0
-	if total["shows"]>0:
-		total["ctr"]=round(total["clicks_search"]/total["shows_search"]*100,2)
-	else:
-		total["ctr"]=0.0
-
-	for banid in out:
-		out[banid]["name"]=banid.split("-")[0]
-		if out[banid]["clicks_search"]>0:
-			out[banid]["per_search"]=round(out[banid]["sum_search"]/out[banid]["clicks_search"],2)
 		else:
-			out[banid]["per_search"]=0.0
-		if out[banid]["clicks_context"]>0:
-			out[banid]["per_context"]=round(out[banid]["sum_context"]/out[banid]["clicks_context"],2)
+			res=YaReport.all()
+			res.filter("date >=",(datetime.today()-timedelta(days=8)+_timezone))
+			res.filter("camp_id",yacamps)
+	
+			for stat in res:
+				data=json.loads(stat.rep)
+				_dicts=json.loads(stat.dicts)
+				for key in _dicts:
+					dicts[key]=_dicts[key]
+				_data={}
+				for key in data:
+					_data[dicts[key]]=data[key]
+				stats.append(_data)
+		out={}
+		for d in stats:
+			for banid in d:
+				out[banid]=out.get(banid,{})
+				for p in d[banid]:
+					out[banid][p]=out[banid].get(p,0.0)
+					out[banid][p]+=float(d[banid][p])
+	
+		total={"sum": 0.0,"shows": 0.0,"clicks": 0.0,"sum_search": 0.0,"sum_context": 0.0,"clicks_search": 0.0,"clicks_context": 0.0,"shows_search": 0.0,"shows_context": 0.0}
+		for p in total:
+			total[p]=sum(out[banid][p] for banid in out)
+	
+		if total["clicks_search"]>0:
+			total["per_search"]=round(total["sum_search"]/total["clicks_search"],2)
 		else:
-			out[banid]["per_context"]=0.0
-		if out[banid]["clicks"]>0:
-			out[banid]["per"]=round(out[banid]["sum"]/out[banid]["clicks"],2)
+			total["per_search"]=0.0
+		if total["clicks_context"]>0:
+			total["per_context"]=round(total["sum_context"]/total["clicks_context"],2)
 		else:
-			out[banid]["per"]=0.0
-
-		if out[banid]["shows"]>0:
-			out[banid]["ctr"]=round(out[banid]["clicks"]/out[banid]["shows"]*100,2)
+			total["per_context"]=0.0
+		if total["clicks"]>0:
+			total["per"]=round(total["sum"]/total["clicks"],2)
 		else:
-			out[banid]["ctr"]=0.0
-
-		if total["sum"]>0:
-			out[banid]["psum"]=round(out[banid]["sum"]/total["sum"]*100,2)
+			total["per"]=0.0
+		if total["shows"]>0:
+			total["ctr"]=round(total["clicks_search"]/total["shows_search"]*100,2)
 		else:
-			out[banid]["psum"]=0.0
-
-	tcamps=out.values()
-	tcamps.sort(sort_stat)
-        context = {
-            'camps': tcamps,
-	    'total': total
-        }	
-        return self.render_response('stat.html', **context)
+			total["ctr"]=0.0
+	
+		for banid in out:
+			out[banid]["name"]=banid.split("-")[0]
+			if out[banid]["clicks_search"]>0:
+				out[banid]["per_search"]=round(out[banid]["sum_search"]/out[banid]["clicks_search"],2)
+			else:
+				out[banid]["per_search"]=0.0
+			if out[banid]["clicks_context"]>0:
+				out[banid]["per_context"]=round(out[banid]["sum_context"]/out[banid]["clicks_context"],2)
+			else:
+				out[banid]["per_context"]=0.0
+			if out[banid]["clicks"]>0:
+				out[banid]["per"]=round(out[banid]["sum"]/out[banid]["clicks"],2)
+			else:
+				out[banid]["per"]=0.0
+	
+			if out[banid]["shows"]>0:
+				out[banid]["ctr"]=round(out[banid]["clicks"]/out[banid]["shows"]*100,2)
+			else:
+				out[banid]["ctr"]=0.0
+	
+			if total["sum"]>0:
+				out[banid]["psum"]=round(out[banid]["sum"]/total["sum"]*100,2)
+			else:
+				out[banid]["psum"]=0.0
+	
+		tcamps=out.values()
+		tcamps.sort(sort_stat)
+	        context = {
+	            'camps': tcamps,
+		    'total': total
+	        }	
+	        return self.render_response('stat.html', **context)
 class IndexHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
 	@login_required
 	def get(self):
