@@ -48,6 +48,21 @@ def environmentfilter(f):
     return f
 
 
+def make_attrgetter(environment, attribute):
+    """Returns a callable that looks up the given attribute from a
+    passed object with the rules of the environment.  Dots are allowed
+    to access attributes of attributes.
+    """
+    if not isinstance(attribute, basestring) or '.' not in attribute:
+        return lambda x: environment.getitem(x, attribute)
+    attribute = attribute.split('.')
+    def attrgetter(item):
+        for part in attribute:
+            item = environment.getitem(item, part)
+        return item
+    return attrgetter
+
+
 def do_forceescape(value):
     """Enforce HTML escaping.  This will probably double escape variables."""
     if hasattr(value, '__html__'):
@@ -176,7 +191,9 @@ def do_dictsort(value, case_sensitive=False, by='key'):
     return sorted(value.items(), key=sort_func)
 
 
-def do_sort(value, reverse=False, case_sensitive=False):
+@environmentfilter
+def do_sort(environment, value, reverse=False, case_sensitive=False,
+            attribute=None):
     """Sort an iterable.  Per default it sorts ascending, if you pass it
     true as first argument it will reverse the sorting.
 
@@ -189,6 +206,18 @@ def do_sort(value, reverse=False, case_sensitive=False):
         {% for item in iterable|sort %}
             ...
         {% endfor %}
+
+    It is also possible to sort by an attribute (for example to sort
+    by the date of an object) by specifying the `attribute` parameter:
+
+    .. sourcecode:: jinja
+
+        {% for item in iterable|sort(attribute='date') %}
+            ...
+        {% endfor %}
+
+    .. versionchanged:: 2.6
+       The `attribute` parameter was added.
     """
     if not case_sensitive:
         def sort_func(item):
@@ -197,6 +226,10 @@ def do_sort(value, reverse=False, case_sensitive=False):
             return item
     else:
         sort_func = None
+    if attribute is not None:
+        getter = make_attrgetter(environment, attribute)
+        def sort_func(item, processor=sort_func or (lambda x: x)):
+            return processor(getter(item))
     return sorted(value, key=sort_func, reverse=reverse)
 
 
@@ -223,7 +256,7 @@ def do_default(value, default_value=u'', boolean=False):
 
 
 @evalcontextfilter
-def do_join(eval_ctx, value, d=u''):
+def do_join(eval_ctx, value, d=u'', attribute=None):
     """Return a string which is the concatenation of the strings in the
     sequence. The separator between elements is an empty string per
     default, you can define it with the optional parameter:
@@ -235,7 +268,19 @@ def do_join(eval_ctx, value, d=u''):
 
         {{ [1, 2, 3]|join }}
             -> 123
+
+    It is also possible to join certain attributes of an object:
+
+    .. sourcecode:: jinja
+
+        {{ users|join(', ', attribute='username') }}
+
+    .. versionadded:: 2.6
+       The `attribute` parameter was added.
     """
+    if attribute is not None:
+        value = imap(make_attrgetter(eval_ctx.environment, attribute), value)
+
     # no automatic escaping?  joining is a lot eaiser then
     if not eval_ctx.autoescape:
         return unicode(d).join(imap(unicode, value))
@@ -293,21 +338,33 @@ def do_random(environment, seq):
 
 
 def do_filesizeformat(value, binary=False):
-    """Format the value like a 'human-readable' file size (i.e. 13 KB,
-    4.1 MB, 102 bytes, etc).  Per default decimal prefixes are used (mega,
-    giga, etc.), if the second parameter is set to `True` the binary
-    prefixes are used (mebi, gibi).
+    """Format the value like a 'human-readable' file size (i.e. 13 kB,
+    4.1 MB, 102 Bytes, etc).  Per default decimal prefixes are used (Mega,
+    Giga, etc.), if the second parameter is set to `True` the binary
+    prefixes are used (Mebi, Gibi).
     """
     bytes = float(value)
     base = binary and 1024 or 1000
-    middle = binary and 'i' or ''
-    if bytes < base:
-        return "%d Byte%s" % (bytes, bytes != 1 and 's' or '')
-    elif bytes < base * base:
-        return "%.1f K%sB" % (bytes / base, middle)
-    elif bytes < base * base * base:
-        return "%.1f M%sB" % (bytes / (base * base), middle)
-    return "%.1f G%sB" % (bytes / (base * base * base), middle)
+    prefixes = [
+        (binary and "KiB" or "kB"),
+        (binary and "MiB" or "MB"),
+        (binary and "GiB" or "GB"),
+        (binary and "TiB" or "TB"),
+        (binary and "PiB" or "PB"),
+        (binary and "EiB" or "EB"),
+        (binary and "ZiB" or "ZB"),
+        (binary and "YiB" or "YB")
+    ]
+    if bytes == 1:
+        return "1 Byte"
+    elif bytes < base:
+        return "%d Bytes" % bytes
+    else:
+        for i, prefix in enumerate(prefixes):
+            unit = base * base ** (i + 1)
+            if bytes < unit:
+                return "%.1f %s" % ((bytes / unit), prefix)
+        return "%.1f %s" % ((bytes / unit), prefix)
 
 
 def do_pprint(value, verbose=False):
@@ -386,8 +443,8 @@ def do_truncate(s, length=255, killwords=False, end='...'):
     result.append(end)
     return u' '.join(result)
 
-
-def do_wordwrap(s, width=79, break_long_words=True):
+@environmentfilter
+def do_wordwrap(environment, s, width=79, break_long_words=True):
     """
     Return a copy of the string passed to the filter wrapped after
     ``79`` characters.  You can override this default using the first
@@ -395,7 +452,7 @@ def do_wordwrap(s, width=79, break_long_words=True):
     split words apart if they are longer than `width`.
     """
     import textwrap
-    return u'\n'.join(textwrap.wrap(s, width=width, expand_tabs=False,
+    return environment.newline_sequence.join(textwrap.wrap(s, width=width, expand_tabs=False,
                                    replace_whitespace=False,
                                    break_long_words=break_long_words))
 
@@ -595,8 +652,12 @@ def do_groupby(environment, value, attribute):
     As you can see the item we're grouping by is stored in the `grouper`
     attribute and the `list` contains all the objects that have this grouper
     in common.
+
+    .. versionchanged:: 2.6
+       It's now possible to use dotted notation to group by the child
+       attribute of another attribute.
     """
-    expr = lambda x: environment.getitem(x, attribute)
+    expr = make_attrgetter(environment, attribute)
     return sorted(map(_GroupTuple, groupby(sorted(value, key=expr), expr)))
 
 
@@ -607,6 +668,27 @@ class _GroupTuple(tuple):
 
     def __new__(cls, (key, value)):
         return tuple.__new__(cls, (key, list(value)))
+
+
+@environmentfilter
+def do_sum(environment, iterable, attribute=None, start=0):
+    """Returns the sum of a sequence of numbers plus the value of parameter
+    'start' (which defaults to 0).  When the sequence is empty it returns
+    start.
+
+    It is also possible to sum up only certain attributes:
+
+    .. sourcecode:: jinja
+
+        Total: {{ items|sum(attribute='price') }}
+
+    .. versionchanged:: 2.6
+       The `attribute` parameter was added to allow suming up over
+       attributes.  Also the `start` parameter was moved on to the right.
+    """
+    if attribute is not None:
+        iterable = imap(make_attrgetter(environment, attribute), iterable)
+    return sum(iterable, start)
 
 
 def do_list(value):
@@ -710,7 +792,7 @@ FILTERS = {
     'striptags':            do_striptags,
     'slice':                do_slice,
     'batch':                do_batch,
-    'sum':                  sum,
+    'sum':                  do_sum,
     'abs':                  abs,
     'round':                do_round,
     'groupby':              do_groupby,

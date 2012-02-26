@@ -251,8 +251,7 @@ class PackageLoader(BaseLoader):
             for filename in self.provider.resource_listdir(path):
                 fullname = path + '/' + filename
                 if self.provider.resource_isdir(fullname):
-                    for item in _walk(fullname):
-                        results.append(item)
+                    _walk(fullname)
                 else:
                     results.append(fullname[offset:].lstrip('/'))
         _walk(path)
@@ -397,6 +396,8 @@ class ModuleLoader(BaseLoader):
     ...     ModuleLoader('/path/to/compiled/templates'),
     ...     FileSystemLoader('/path/to/templates')
     ... ])
+
+    Templates can be precompiled with :meth:`Environment.compile_templates`.
     """
 
     has_source_access = False

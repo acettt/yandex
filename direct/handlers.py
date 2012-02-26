@@ -9,6 +9,7 @@ from google.appengine.ext import db
 from google.appengine.api.labs import taskqueue
 from google.appengine.api import memcache, mail
 import json, logging, yaml, os
+from tipfy.ext.auth import AppEngineAuthMixin, login_required
 
 _timezone=timedelta(hours=4)
 cfg=yaml.load(open("config/direct.yaml"))
@@ -506,190 +507,190 @@ class GetStatHandler(RequestHandler, Jinja2Mixin):
 	    'total': total
         }	
         return self.render_response('stat.html', **context)
-class IndexHandler(RequestHandler, Jinja2Mixin):
-    def get(self):
-    
-	ddd=datetime.today()
-	cd=(ddd+_timezone).strftime("%Y-%m-%d")
-	dates=[]
-	for key in range(14):
-		if ((ddd-timedelta(days=key)+_timezone).weekday() not in (5,6)) or key in [0,1]:
-			t1=(ddd-timedelta(days=key)+_timezone)
-			dates.append(t1.strftime("%Y-%m-%d"))
-
-	end_date=dates[0]
-	start_date=dates[-1]
-	obj=mycacher.get("obj")
-	if obj is None:
-		obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
-		mycacher.set("obj",obj)
-
-	camps=memcache.get("camps2")
-	if camps is None:
-		logins=obj.GetClientsList()
-		camps=obj.GetCampaignsList(logins)
-		memcache.set("camps2",camps,7200)
-	camps_ids=[key for key in camps]
-
-	ams=getSysCamps()
-	for am in ams:
-		if int(ams[am].camp_id) in camps:
-			camps[int(ams[am].camp_id)]["control_money"]=ams[am].amount
-			camps[int(ams[am].camp_id)]["last_invoice"]=ams[am].last_invoice
-			
-	stats=memcache.get("stats")
-	if stats is None:
-		res=YaReport.all()
-		res.filter("date >=",(ddd-timedelta(days=14)+_timezone))
-		res.order("date")
-		stats=[]
-		for stat in res:
-			data=json.loads(stat.shortrep)
-			stats.append({"CampaignID": stat.camp_id.camp_id,"StatDate": stat.date.strftime("%Y-%m-%d"),"SumSearch": data["sum_search"],"SumContext": data["sum_context"],"ClicksSearch": data["clicks_search"],"ClicksContext": data["clicks_context"],"ShowsSearch": data["shows_search"],"ShowsContext": data["shows_context"],"ClicksSearchNotrel": data["clicks_search_notrel"],"ClicksContextNotrel": data["clicks_context_notrel"],"ShowsSearchNotrel": data["shows_search_notrel"],"ShowsContextNotrel": data["shows_context_notrel"]})
-		memcache.set("stats",stats,500)
-	stopd=memcache.get("stopd"+cd)
-	if stopd is None:
-		res=YaCampanyLogs.all()
-		dt2=ddd+_timezone
-		dt3=date(year=dt2.year,month=dt2.month,day=dt2.day)
-		res.filter("date >=",dt3)
-		res.filter("act","stop")
-		stopd=[]
-		for act in res:
-			stopd.append({'camp_id': int(act.camp_id.camp_id),'date': act.date})
-		memcache.set("stopd"+cd,stopd,10800)
-	for act in stopd:
-		camps[int(act["camp_id"])]["stop"]="%02d"%(act["date"].hour+4)+":%02d"%act["date"].minute
-
-	stoped=memcache.get("stoped")
-	if stoped is None:
-		stoped={}
-		res2=YaCampanyLogs.all()
-		dt2=ddd+_timezone-timedelta(days=14)
-		dt3=date(year=dt2.year,month=dt2.month,day=dt2.day)
-		res2.filter("date >=",dt3)
-		res2.filter("act","stop")
-		for act in res2:
-			d1=str(act.date.year)+"-"+"%02d"%act.date.month+"-"+"%02d"%act.date.day
-			t1=[act.date.hour+4,act.date.minute,0]
-			stoped[int(act.camp_id.camp_id)]=stoped.get(int(act.camp_id.camp_id),{})
-			stoped[int(act.camp_id.camp_id)][d1]=t1
-		memcache.set("stoped",stoped,14400)
-	ostat={}
-	for key in stats:
-		ostat[int(key["CampaignID"])]=ostat.get(int(key["CampaignID"]),{})
-		ostat[int(key["CampaignID"])][key["StatDate"]]=key
-	for campid in camps:
-		_sum={"SumSearch":0,"SumContext":0,"ClicksSearch":0,"ClicksContext":0,"ShowsSearch":0,"ShowsContext":0,"PerClickSearch":0,"PerClickContext":0,"PerClickTotal":0,"CTR":0}
-		graph={}
-		ostat[campid]=ostat.get(campid,{})
-		total_d=sum(1 for dt in dates if dt in ostat[campid])
-		for dt in dates:
-			ostat[campid][dt]=ostat[campid].get(dt,{"SumSearch":0,"SumContext":0,"ClicksSearch":0,"ClicksContext":0,"ShowsSearch":0,"ShowsContext":0,"PerClickSearch":0,"PerClickContext":0,"PerClickTotal":0,"ClicksSearchNotrel":0,"ShowsSearchNotrel":0})
-
-			if ostat[campid][dt]["ShowsSearchNotrel"]>0:
-				ostat[campid][dt]["CTR"]=round(ostat[campid][dt]["ClicksSearchNotrel"]/ostat[campid][dt]["ShowsSearchNotrel"]*100,2)
-			else:
-				ostat[campid][dt]["CTR"]=0;
-
-			if ostat[campid][dt]["ClicksSearch"]>0:
-				ostat[campid][dt]["PerClickSearch"]=round(ostat[campid][dt]["SumSearch"]/ostat[campid][dt]["ClicksSearch"],2)
-			else:
-				ostat[campid][dt]["PerClickSearch"]=0;
-			if ostat[campid][dt]["ClicksContext"]>0:
-				ostat[campid][dt]["PerClickContext"]=round(ostat[campid][dt]["SumContext"]/ostat[campid][dt]["ClicksContext"],2)
-			else:
-				ostat[campid][dt]["PerClickContext"]=0;
-			if (ostat[campid][dt]["ClicksSearch"]+ostat[campid][dt]["ClicksContext"])>0:
-				ostat[campid][dt]["PerClickTotal"]=round((ostat[campid][dt]["SumContext"]+ostat[campid][dt]["SumSearch"])/(ostat[campid][dt]["ClicksSearch"]+ostat[campid][dt]["ClicksContext"]),2)
-			else:
-				ostat[campid][dt]["PerClickTotal"]=0;
-			
-			tdt=dt.split("-")
-		for param in _sum:
-			_sum[param]=sum(ostat[campid][dt][param] for dt in dates)
-		graph["sum"]=[[dt,round(ostat[campid][dt]["SumSearch"],2),round(ostat[campid][dt]["SumContext"],2),round(ostat[campid][dt]["SumSearch"]+ostat[campid][dt]["SumContext"],2)] for dt in dates]
-		graph["clicks"]=[[dt,ostat[campid][dt]["ClicksSearch"],ostat[campid][dt]["ClicksContext"],ostat[campid][dt]["ClicksSearch"]+ostat[campid][dt]["ClicksContext"]] for dt in dates]
-		graph["shows"]=[[dt,ostat[campid][dt]["ShowsSearch"],ostat[campid][dt]["ShowsContext"],ostat[campid][dt]["ShowsSearch"]+ostat[campid][dt]["ShowsContext"]] for dt in dates]
-		graph["per"]=[[dt,ostat[campid][dt]["PerClickSearch"],ostat[campid][dt]["PerClickContext"],ostat[campid][dt]["PerClickTotal"]] for dt in dates]
-		graph["ctr"]=[[dt,ostat[campid][dt]["CTR"]] for dt in dates]
-		stoped[campid]=stoped.get(campid,{})
-		graph["stop"]=[[dt,stoped[campid].get(dt,[23,59,59])] for dt in dates]
-
-		for key in graph:
-			graph[key]=json.dumps(graph[key])
-		for key in ("SumSearch","SumContext","ClicksSearch","ClicksContext","ShowsSearch","ShowsContext","CTR"):
-			if total_d>0:
-				_sum[key]=round(_sum[key]/total_d,2)
-			else:
-				_sum[key]=round(0,2)	
-		camps[campid]["graph"]=graph
-		camps[campid]["SumTotal"]=_sum["SumSearch"]+_sum["SumContext"]
-		camps[campid]["SumContext"]=_sum["SumContext"]
-		camps[campid]["CTR"]=_sum["CTR"]
-		camps[campid]["ClicksTotal"]=int(_sum["ClicksSearch"]+_sum["ClicksContext"])
-		camps[campid]["ClicksContext"]=int(_sum["ClicksContext"])
-		camps[campid]["ShowsTotal"]=int(_sum["ShowsSearch"]+_sum["ShowsContext"])
-		camps[campid]["ShowsContext"]=int(_sum["ShowsContext"])
-		if (camps[campid]["SumTotal"]>0):
-			camps[campid]["days_rest"]=int(camps[campid]["Rest"]/camps[campid]["SumTotal"])
-		else:
-			camps[campid]["days_rest"]=0
-		if (_sum["ClicksContext"]+_sum["ClicksSearch"])>0:
-			camps[campid]["PerClickTotal"]=round((_sum["SumContext"]+_sum["SumSearch"])/(_sum["ClicksContext"]+_sum["ClicksSearch"]),2)
-		else:
-			camps[campid]["PerClickTotal"]=0
-		camps[campid]["todaySumTotal"]=ostat[campid][dates[0]]["SumSearch"]+ostat[campid][dates[0]]["SumContext"]
-		camps[campid]["yestodaySumTotal"]=ostat[campid][dates[1]]["SumSearch"]+ostat[campid][dates[1]]["SumContext"]
-		camps[campid]['control_money']=camps[campid].get('control_money',0)
-
-		if (camps[campid]["control_money"] > 0):
-			camps[campid]["todayPer"]=int(30*((100-100*camps[campid]["todaySumTotal"]/camps[campid]["control_money"])/100))
-			camps[campid]["todayPercent"]=int(round(100*camps[campid]["todaySumTotal"]/camps[campid]["control_money"]))
-			if (camps[campid]["todayPercent"]>100):
-				camps[campid]["todayPer"]=0
-		else:
-			camps[campid]["todayPer"]=100
-			camps[campid]["todayPercent"]=0
-		camps[campid]["todaySumContext"]=ostat[campid][dates[0]]["SumContext"]
-		camps[campid]["yestodaySumContext"]=ostat[campid][dates[1]]["SumContext"]
-
-		camps[campid]["todayCTR"]=ostat[campid][dates[0]]["CTR"]
-		camps[campid]["yestodayCTR"]=ostat[campid][dates[1]]["CTR"]
-
-		camps[campid]["todayClicksSearch"]=int(ostat[campid][dates[0]]["ClicksSearch"]+ostat[campid][dates[0]]["ClicksContext"])
-		camps[campid]["yestodayClicksSearch"]=int(ostat[campid][dates[1]]["ClicksSearch"]+ostat[campid][dates[1]]["ClicksContext"])
-		camps[campid]["todayClicksContext"]=int(ostat[campid][dates[0]]["ClicksContext"])
-		camps[campid]["yestodayClicksContext"]=int(ostat[campid][dates[1]]["ClicksContext"])
-		camps[campid]["todayShowsSearch"]=int(ostat[campid][dates[0]]["ShowsSearch"]+ostat[campid][dates[0]]["ShowsContext"])
-		camps[campid]["yestodayShowsSearch"]=int(ostat[campid][dates[1]]["ShowsSearch"]+ostat[campid][dates[1]]["ShowsContext"])
-		camps[campid]["todayShowsContext"]=int(ostat[campid][dates[0]]["ShowsContext"])
-		camps[campid]["yestodayShowsContext"]=int(ostat[campid][dates[1]]["ShowsContext"])
+class IndexHandler(RequestHandler, Jinja2Mixin, AppEngineAuthMixin):
+	@login_required
+	def get(self):
+		ddd=datetime.today()
+		cd=(ddd+_timezone).strftime("%Y-%m-%d")
+		dates=[]
+		for key in range(14):
+			if ((ddd-timedelta(days=key)+_timezone).weekday() not in (5,6)) or key in [0,1]:
+				t1=(ddd-timedelta(days=key)+_timezone)
+				dates.append(t1.strftime("%Y-%m-%d"))
 	
-		if (camps[campid]["todayClicksSearch"]+camps[campid]["todayClicksContext"])>0:
-			camps[campid]["todayPerClick"]=round((camps[campid]["todaySumTotal"])/(camps[campid]["todayClicksSearch"]),2)
-		else:
-			camps[campid]["todayPerClick"]=0
+		end_date=dates[0]
+		start_date=dates[-1]
+		obj=mycacher.get("obj")
+		if obj is None:
+			obj=YaObject(ya_login,ya_pass,ya_token,ya_stoken)
+			mycacher.set("obj",obj)
 	
-		if (camps[campid]["yestodayClicksSearch"]+camps[campid]["yestodayClicksContext"])>0:
-			camps[campid]["yestodayPerClick"]=round((camps[campid]["yestodaySumTotal"])/(camps[campid]["yestodayClicksSearch"]),2)
-		else:
-			camps[campid]["yestodayPerClick"]=0
+		camps=memcache.get("camps2")
+		if camps is None:
+			logins=obj.GetClientsList()
+			camps=obj.GetCampaignsList(logins)
+			memcache.set("camps2",camps,7200)
+		camps_ids=[key for key in camps]
 	
-		if (camps[campid]["todayPerClick"]<camps[campid]["PerClickTotal"]) and (camps[campid]["yestodayPerClick"]<camps[campid]["PerClickTotal"]):
-			camps[campid]["trend"]="up"
-		elif (camps[campid]["todayPerClick"]>camps[campid]["PerClickTotal"]) and (camps[campid]["yestodayPerClick"]>camps[campid]["PerClickTotal"]):
-			camps[campid]["trend"]="down"
-		else:
-			camps[campid]["trend"]="zero"
-
-		camps[campid]["Rest"]=int(camps[campid]["Rest"])
-
-	tcamps=camps.values()
-	tcamps.sort(sort_camp)
-
-        context = {
-            'camps': tcamps,
-        }
-
-        return self.render_response('index.html', **context)
+		ams=getSysCamps()
+		for am in ams:
+			if int(ams[am].camp_id) in camps:
+				camps[int(ams[am].camp_id)]["control_money"]=ams[am].amount
+				camps[int(ams[am].camp_id)]["last_invoice"]=ams[am].last_invoice
+				
+		stats=memcache.get("stats")
+		if stats is None:
+			res=YaReport.all()
+			res.filter("date >=",(ddd-timedelta(days=14)+_timezone))
+			res.order("date")
+			stats=[]
+			for stat in res:
+				data=json.loads(stat.shortrep)
+				stats.append({"CampaignID": stat.camp_id.camp_id,"StatDate": stat.date.strftime("%Y-%m-%d"),"SumSearch": data["sum_search"],"SumContext": data["sum_context"],"ClicksSearch": data["clicks_search"],"ClicksContext": data["clicks_context"],"ShowsSearch": data["shows_search"],"ShowsContext": data["shows_context"],"ClicksSearchNotrel": data["clicks_search_notrel"],"ClicksContextNotrel": data["clicks_context_notrel"],"ShowsSearchNotrel": data["shows_search_notrel"],"ShowsContextNotrel": data["shows_context_notrel"]})
+			memcache.set("stats",stats,500)
+		stopd=memcache.get("stopd"+cd)
+		if stopd is None:
+			res=YaCampanyLogs.all()
+			dt2=ddd+_timezone
+			dt3=date(year=dt2.year,month=dt2.month,day=dt2.day)
+			res.filter("date >=",dt3)
+			res.filter("act","stop")
+			stopd=[]
+			for act in res:
+				stopd.append({'camp_id': int(act.camp_id.camp_id),'date': act.date})
+			memcache.set("stopd"+cd,stopd,10800)
+		for act in stopd:
+			camps[int(act["camp_id"])]["stop"]="%02d"%(act["date"].hour+4)+":%02d"%act["date"].minute
+	
+		stoped=memcache.get("stoped")
+		if stoped is None:
+			stoped={}
+			res2=YaCampanyLogs.all()
+			dt2=ddd+_timezone-timedelta(days=14)
+			dt3=date(year=dt2.year,month=dt2.month,day=dt2.day)
+			res2.filter("date >=",dt3)
+			res2.filter("act","stop")
+			for act in res2:
+				d1=str(act.date.year)+"-"+"%02d"%act.date.month+"-"+"%02d"%act.date.day
+				t1=[act.date.hour+4,act.date.minute,0]
+				stoped[int(act.camp_id.camp_id)]=stoped.get(int(act.camp_id.camp_id),{})
+				stoped[int(act.camp_id.camp_id)][d1]=t1
+			memcache.set("stoped",stoped,14400)
+		ostat={}
+		for key in stats:
+			ostat[int(key["CampaignID"])]=ostat.get(int(key["CampaignID"]),{})
+			ostat[int(key["CampaignID"])][key["StatDate"]]=key
+		for campid in camps:
+			_sum={"SumSearch":0,"SumContext":0,"ClicksSearch":0,"ClicksContext":0,"ShowsSearch":0,"ShowsContext":0,"PerClickSearch":0,"PerClickContext":0,"PerClickTotal":0,"CTR":0}
+			graph={}
+			ostat[campid]=ostat.get(campid,{})
+			total_d=sum(1 for dt in dates if dt in ostat[campid])
+			for dt in dates:
+				ostat[campid][dt]=ostat[campid].get(dt,{"SumSearch":0,"SumContext":0,"ClicksSearch":0,"ClicksContext":0,"ShowsSearch":0,"ShowsContext":0,"PerClickSearch":0,"PerClickContext":0,"PerClickTotal":0,"ClicksSearchNotrel":0,"ShowsSearchNotrel":0})
+	
+				if ostat[campid][dt]["ShowsSearchNotrel"]>0:
+					ostat[campid][dt]["CTR"]=round(ostat[campid][dt]["ClicksSearchNotrel"]/ostat[campid][dt]["ShowsSearchNotrel"]*100,2)
+				else:
+					ostat[campid][dt]["CTR"]=0;
+	
+				if ostat[campid][dt]["ClicksSearch"]>0:
+					ostat[campid][dt]["PerClickSearch"]=round(ostat[campid][dt]["SumSearch"]/ostat[campid][dt]["ClicksSearch"],2)
+				else:
+					ostat[campid][dt]["PerClickSearch"]=0;
+				if ostat[campid][dt]["ClicksContext"]>0:
+					ostat[campid][dt]["PerClickContext"]=round(ostat[campid][dt]["SumContext"]/ostat[campid][dt]["ClicksContext"],2)
+				else:
+					ostat[campid][dt]["PerClickContext"]=0;
+				if (ostat[campid][dt]["ClicksSearch"]+ostat[campid][dt]["ClicksContext"])>0:
+					ostat[campid][dt]["PerClickTotal"]=round((ostat[campid][dt]["SumContext"]+ostat[campid][dt]["SumSearch"])/(ostat[campid][dt]["ClicksSearch"]+ostat[campid][dt]["ClicksContext"]),2)
+				else:
+					ostat[campid][dt]["PerClickTotal"]=0;
+				
+				tdt=dt.split("-")
+			for param in _sum:
+				_sum[param]=sum(ostat[campid][dt][param] for dt in dates)
+			graph["sum"]=[[dt,round(ostat[campid][dt]["SumSearch"],2),round(ostat[campid][dt]["SumContext"],2),round(ostat[campid][dt]["SumSearch"]+ostat[campid][dt]["SumContext"],2)] for dt in dates]
+			graph["clicks"]=[[dt,ostat[campid][dt]["ClicksSearch"],ostat[campid][dt]["ClicksContext"],ostat[campid][dt]["ClicksSearch"]+ostat[campid][dt]["ClicksContext"]] for dt in dates]
+			graph["shows"]=[[dt,ostat[campid][dt]["ShowsSearch"],ostat[campid][dt]["ShowsContext"],ostat[campid][dt]["ShowsSearch"]+ostat[campid][dt]["ShowsContext"]] for dt in dates]
+			graph["per"]=[[dt,ostat[campid][dt]["PerClickSearch"],ostat[campid][dt]["PerClickContext"],ostat[campid][dt]["PerClickTotal"]] for dt in dates]
+			graph["ctr"]=[[dt,ostat[campid][dt]["CTR"]] for dt in dates]
+			stoped[campid]=stoped.get(campid,{})
+			graph["stop"]=[[dt,stoped[campid].get(dt,[23,59,59])] for dt in dates]
+	
+			for key in graph:
+				graph[key]=json.dumps(graph[key])
+			for key in ("SumSearch","SumContext","ClicksSearch","ClicksContext","ShowsSearch","ShowsContext","CTR"):
+				if total_d>0:
+					_sum[key]=round(_sum[key]/total_d,2)
+				else:
+					_sum[key]=round(0,2)	
+			camps[campid]["graph"]=graph
+			camps[campid]["SumTotal"]=_sum["SumSearch"]+_sum["SumContext"]
+			camps[campid]["SumContext"]=_sum["SumContext"]
+			camps[campid]["CTR"]=_sum["CTR"]
+			camps[campid]["ClicksTotal"]=int(_sum["ClicksSearch"]+_sum["ClicksContext"])
+			camps[campid]["ClicksContext"]=int(_sum["ClicksContext"])
+			camps[campid]["ShowsTotal"]=int(_sum["ShowsSearch"]+_sum["ShowsContext"])
+			camps[campid]["ShowsContext"]=int(_sum["ShowsContext"])
+			if (camps[campid]["SumTotal"]>0):
+				camps[campid]["days_rest"]=int(camps[campid]["Rest"]/camps[campid]["SumTotal"])
+			else:
+				camps[campid]["days_rest"]=0
+			if (_sum["ClicksContext"]+_sum["ClicksSearch"])>0:
+				camps[campid]["PerClickTotal"]=round((_sum["SumContext"]+_sum["SumSearch"])/(_sum["ClicksContext"]+_sum["ClicksSearch"]),2)
+			else:
+				camps[campid]["PerClickTotal"]=0
+			camps[campid]["todaySumTotal"]=ostat[campid][dates[0]]["SumSearch"]+ostat[campid][dates[0]]["SumContext"]
+			camps[campid]["yestodaySumTotal"]=ostat[campid][dates[1]]["SumSearch"]+ostat[campid][dates[1]]["SumContext"]
+			camps[campid]['control_money']=camps[campid].get('control_money',0)
+	
+			if (camps[campid]["control_money"] > 0):
+				camps[campid]["todayPer"]=int(30*((100-100*camps[campid]["todaySumTotal"]/camps[campid]["control_money"])/100))
+				camps[campid]["todayPercent"]=int(round(100*camps[campid]["todaySumTotal"]/camps[campid]["control_money"]))
+				if (camps[campid]["todayPercent"]>100):
+					camps[campid]["todayPer"]=0
+			else:
+				camps[campid]["todayPer"]=100
+				camps[campid]["todayPercent"]=0
+			camps[campid]["todaySumContext"]=ostat[campid][dates[0]]["SumContext"]
+			camps[campid]["yestodaySumContext"]=ostat[campid][dates[1]]["SumContext"]
+	
+			camps[campid]["todayCTR"]=ostat[campid][dates[0]]["CTR"]
+			camps[campid]["yestodayCTR"]=ostat[campid][dates[1]]["CTR"]
+	
+			camps[campid]["todayClicksSearch"]=int(ostat[campid][dates[0]]["ClicksSearch"]+ostat[campid][dates[0]]["ClicksContext"])
+			camps[campid]["yestodayClicksSearch"]=int(ostat[campid][dates[1]]["ClicksSearch"]+ostat[campid][dates[1]]["ClicksContext"])
+			camps[campid]["todayClicksContext"]=int(ostat[campid][dates[0]]["ClicksContext"])
+			camps[campid]["yestodayClicksContext"]=int(ostat[campid][dates[1]]["ClicksContext"])
+			camps[campid]["todayShowsSearch"]=int(ostat[campid][dates[0]]["ShowsSearch"]+ostat[campid][dates[0]]["ShowsContext"])
+			camps[campid]["yestodayShowsSearch"]=int(ostat[campid][dates[1]]["ShowsSearch"]+ostat[campid][dates[1]]["ShowsContext"])
+			camps[campid]["todayShowsContext"]=int(ostat[campid][dates[0]]["ShowsContext"])
+			camps[campid]["yestodayShowsContext"]=int(ostat[campid][dates[1]]["ShowsContext"])
+		
+			if (camps[campid]["todayClicksSearch"]+camps[campid]["todayClicksContext"])>0:
+				camps[campid]["todayPerClick"]=round((camps[campid]["todaySumTotal"])/(camps[campid]["todayClicksSearch"]),2)
+			else:
+				camps[campid]["todayPerClick"]=0
+		
+			if (camps[campid]["yestodayClicksSearch"]+camps[campid]["yestodayClicksContext"])>0:
+				camps[campid]["yestodayPerClick"]=round((camps[campid]["yestodaySumTotal"])/(camps[campid]["yestodayClicksSearch"]),2)
+			else:
+				camps[campid]["yestodayPerClick"]=0
+		
+			if (camps[campid]["todayPerClick"]<camps[campid]["PerClickTotal"]) and (camps[campid]["yestodayPerClick"]<camps[campid]["PerClickTotal"]):
+				camps[campid]["trend"]="up"
+			elif (camps[campid]["todayPerClick"]>camps[campid]["PerClickTotal"]) and (camps[campid]["yestodayPerClick"]>camps[campid]["PerClickTotal"]):
+				camps[campid]["trend"]="down"
+			else:
+				camps[campid]["trend"]="zero"
+	
+			camps[campid]["Rest"]=int(camps[campid]["Rest"])
+	
+		tcamps=camps.values()
+		tcamps.sort(sort_camp)
+	
+	        context = {
+	            'camps': tcamps,
+	        }
+	
+	        return self.render_response('index.html', **context)

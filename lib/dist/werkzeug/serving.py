@@ -20,7 +20,7 @@
         #!/usr/bin/env python
         # -*- coding: utf-8 -*-
         from myproject import make_app
-        from werkzeug import run_simple
+        from werkzeug.serving import run_simple
 
         app = make_app(...)
         run_simple('localhost', 8080, app, use_reloader=True)
@@ -32,7 +32,7 @@
     instead of a simple start file.
 
 
-    :copyright: (c) 2010 by the Werkzeug Team, see AUTHORS for more details.
+    :copyright: (c) 2011 by the Werkzeug Team, see AUTHORS for more details.
     :license: BSD, see LICENSE for more details.
 """
 import os
@@ -40,9 +40,9 @@ import socket
 import sys
 import time
 import thread
+import signal
 import subprocess
 from urllib import unquote
-from itertools import chain
 from SocketServer import ThreadingMixIn, ForkingMixIn
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 
@@ -64,6 +64,10 @@ class WSGIRequestHandler(BaseHTTPRequestHandler, object):
         else:
             path_info = self.path
             query = ''
+
+        def shutdown_server():
+            self.server.shutdown_signal = True
+
         url_scheme = self.server.ssl_context is None and 'http' or 'https'
         environ = {
             'wsgi.version':         (1, 0),
@@ -73,6 +77,8 @@ class WSGIRequestHandler(BaseHTTPRequestHandler, object):
             'wsgi.multithread':     self.server.multithread,
             'wsgi.multiprocess':    self.server.multiprocess,
             'wsgi.run_once':        False,
+            'werkzeug.server.shutdown':
+                                    shutdown_server,
             'SERVER_SOFTWARE':      self.server_version,
             'REQUEST_METHOD':       self.command,
             'SCRIPT_NAME':          '',
@@ -153,7 +159,7 @@ class WSGIRequestHandler(BaseHTTPRequestHandler, object):
             execute(app)
         except (socket.error, socket.timeout), e:
             self.connection_dropped(e, environ)
-        except:
+        except Exception:
             if self.server.passthrough_errors:
                 raise
             from werkzeug.debug.tbtools import get_current_traceback
@@ -164,20 +170,38 @@ class WSGIRequestHandler(BaseHTTPRequestHandler, object):
                 if not headers_sent:
                     del headers_set[:]
                 execute(InternalServerError())
-            except:
+            except Exception:
                 pass
             self.server.log('error', 'Error on request:\n%s',
                             traceback.plaintext)
 
     def handle(self):
         """Handles a request ignoring dropped connections."""
+        rv = None
         try:
-            return BaseHTTPRequestHandler.handle(self)
+            rv = BaseHTTPRequestHandler.handle(self)
         except (socket.error, socket.timeout), e:
             self.connection_dropped(e)
-        except:
+        except Exception:
             if self.server.ssl_context is None or not is_ssl_error():
                 raise
+        if self.server.shutdown_signal:
+            self.initiate_shutdown()
+        return rv
+
+    def initiate_shutdown(self):
+        """A horrible, horrible way to kill the server for Python 2.6 and
+        later.  It's the best we can do.
+        """
+        # Windows does not provide SIGKILL, go with SIGTERM then.
+        sig = getattr(signal, 'SIGKILL', signal.SIGTERM)
+        # reloader active
+        if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+            os.kill(os.getpid(), sig)
+        # python 2.7
+        self.server._BaseServer__shutdown_request = True
+        # python 2.6
+        self.server._BaseServer__serving = False
 
     def connection_dropped(self, error, environ=None):
         """Called if the connection was closed by the client.  By default
@@ -279,14 +303,18 @@ class _SSLConnectionFix(object):
 
 def select_ip_version(host, port):
     """Returns AF_INET4 or AF_INET6 depending on where to connect to."""
-    try:
-        info = socket.getaddrinfo(host, port, socket.AF_UNSPEC,
-                                  socket.SOCK_STREAM, 0,
-                                  socket.AI_PASSIVE)
-        if info:
-            return info[0][0]
-    except socket.gaierror:
-        pass
+    # disabled due to problems with current ipv6 implementations
+    # and various operating systems.  Probably this code also is
+    # not supposed to work, but I can't come up with any other
+    # ways to implement this.
+    ##try:
+    ##    info = socket.getaddrinfo(host, port, socket.AF_UNSPEC,
+    ##                              socket.SOCK_STREAM, 0,
+    ##                              socket.AI_PASSIVE)
+    ##    if info:
+    ##        return info[0][0]
+    ##except socket.gaierror:
+    ##    pass
     if ':' in host and hasattr(socket, 'AF_INET6'):
         return socket.AF_INET6
     return socket.AF_INET
@@ -296,6 +324,7 @@ class BaseWSGIServer(HTTPServer, object):
     """Simple single-threaded, single-process WSGI server."""
     multithread = False
     multiprocess = False
+    request_queue_size = 128
 
     def __init__(self, host, port, app, handler=None,
                  passthrough_errors=False, ssl_context=None):
@@ -305,6 +334,7 @@ class BaseWSGIServer(HTTPServer, object):
         HTTPServer.__init__(self, (host, int(port)), handler)
         self.app = app
         self.passthrough_errors = passthrough_errors
+        self.shutdown_signal = False
 
         if ssl_context is not None:
             try:
@@ -323,6 +353,7 @@ class BaseWSGIServer(HTTPServer, object):
         _log(type, message, *args)
 
     def serve_forever(self):
+        self.shutdown_signal = False
         try:
             HTTPServer.serve_forever(self)
         except KeyboardInterrupt:
@@ -377,7 +408,23 @@ def make_server(host, port, app=None, threaded=False, processes=1,
                               passthrough_errors, ssl_context)
 
 
-def reloader_loop(extra_files=None, interval=1):
+def _iter_module_files():
+    for module in sys.modules.values():
+        filename = getattr(module, '__file__', None)
+        if filename:
+            old = None
+            while not os.path.isfile(filename):
+                old = filename
+                filename = os.path.dirname(filename)
+                if filename == old:
+                    break
+            else:
+                if filename[-4:] in ('.pyc', '.pyo'):
+                    filename = filename[:-1]
+                yield filename
+
+
+def _reloader_stat_loop(extra_files=None, interval=1):
     """When this function is run from the main thread, it will force other
     threads to exit when any modules currently loaded change.
 
@@ -386,24 +433,10 @@ def reloader_loop(extra_files=None, interval=1):
 
     :param extra_files: a list of additional files it should watch.
     """
-    def iter_module_files():
-        for module in sys.modules.values():
-            filename = getattr(module, '__file__', None)
-            if filename:
-                old = None
-                while not os.path.isfile(filename):
-                    old = filename
-                    filename = os.path.dirname(filename)
-                    if filename == old:
-                        break
-                else:
-                    if filename[-4:] in ('.pyc', '.pyo'):
-                        filename = filename[:-1]
-                    yield filename
-
+    from itertools import chain
     mtimes = {}
     while 1:
-        for filename in chain(iter_module_files(), extra_files or ()):
+        for filename in chain(_iter_module_files(), extra_files or ()):
             try:
                 mtime = os.stat(filename).st_mtime
             except OSError:
@@ -419,12 +452,60 @@ def reloader_loop(extra_files=None, interval=1):
         time.sleep(interval)
 
 
+def _reloader_inotify(extra_files=None, interval=None):
+    # Mutated by inotify loop when changes occur.
+    changed = [False]
+
+    # Setup inotify watches
+    from pyinotify import WatchManager, Notifier
+
+    # this API changed at one point, support both
+    try:
+        from pyinotify import EventsCodes as ec
+        ec.IN_ATTRIB
+    except (ImportError, AttributeError):
+        import pyinotify as ec
+
+    wm = WatchManager()
+    mask = ec.IN_DELETE_SELF | ec.IN_MOVE_SELF | ec.IN_MODIFY | ec.IN_ATTRIB
+
+    def signal_changed(event):
+        if changed[0]:
+            return
+        _log('info', ' * Detected change in %r, reloading' % event.path)
+        changed[:] = [True]
+
+    for fname in extra_files or ():
+        wm.add_watch(fname, mask, signal_changed)
+
+    # ... And now we wait...
+    notif = Notifier(wm)
+    try:
+        while not changed[0]:
+            # always reiterate through sys.modules, adding them
+            for fname in _iter_module_files():
+                wm.add_watch(fname, mask, signal_changed)
+            notif.process_events()
+            if notif.check_events(timeout=interval):
+                notif.read_events()
+            # TODO Set timeout to something small and check parent liveliness
+    finally:
+        notif.stop()
+    sys.exit(3)
+
+
+# currently we always use the stat loop reloader for the simple reason
+# that the inotify one does not respond to added files properly.  Also
+# it's quite buggy and the API is a mess.
+reloader_loop = _reloader_stat_loop
+
+
 def restart_with_reloader():
     """Spawn a new Python interpreter with the same arguments as this one,
     but running the reloader thread.
     """
     while 1:
-        _log('info', ' * Restarting with reloader...')
+        _log('info', ' * Restarting with reloader')
         args = [sys.executable] + sys.argv
         new_environ = os.environ.copy()
         new_environ['WERKZEUG_RUN_MAIN'] = 'true'
@@ -444,6 +525,8 @@ def restart_with_reloader():
 
 def run_with_reloader(main_func, extra_files=None, interval=1):
     """Run the given function in an independent python interpreter."""
+    import signal
+    signal.signal(signal.SIGTERM, lambda *args: sys.exit(0))
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         thread.start_new_thread(main_func, ())
         try:
@@ -524,7 +607,8 @@ def run_simple(hostname, port, application, use_reloader=False,
     if use_reloader:
         # Create and destroy a socket so that any exceptions are raised before
         # we spawn a separate Python interpreter and lose this ability.
-        test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        address_family = select_ip_version(hostname, port)
+        test_socket = socket.socket(address_family, socket.SOCK_STREAM)
         test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         test_socket.bind((hostname, port))
         test_socket.close()

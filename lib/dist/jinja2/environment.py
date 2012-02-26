@@ -196,7 +196,8 @@ class Environment(object):
 
     #: if this environment is sandboxed.  Modifying this variable won't make
     #: the environment sandboxed though.  For a real sandboxed environment
-    #: have a look at jinja2.sandbox
+    #: have a look at jinja2.sandbox.  This flag alone controls the code
+    #: generation by the compiler.
     sandboxed = False
 
     #: True if the environment is just an overlay
@@ -354,7 +355,7 @@ class Environment(object):
             if isinstance(argument, basestring):
                 try:
                     attr = str(argument)
-                except:
+                except Exception:
                     pass
                 else:
                     try:
@@ -539,7 +540,7 @@ class Environment(object):
     def compile_templates(self, target, extensions=None, filter_func=None,
                           zip='deflated', log_function=None,
                           ignore_errors=True, py_compile=False):
-        """Compiles all the templates the loader can find, compiles them
+        """Finds all the templates the loader can find, compiles them
         and stores them in `target`.  If `zip` is `None`, instead of in a
         zipfile, the templates will be will be stored in a directory.
         By default a deflate zip algorithm is used, to switch to
@@ -565,7 +566,7 @@ class Environment(object):
             log_function = lambda x: None
 
         if py_compile:
-            import imp, struct, marshal
+            import imp, marshal
             py_header = imp.get_magic() + \
                 u'\xff\xff\xff\xff'.encode('iso-8859-15')
 
@@ -632,6 +633,8 @@ class Environment(object):
         in the result list.
 
         If the loader does not support that, a :exc:`TypeError` is raised.
+
+        .. versionadded:: 2.4
         """
         x = self.loader.list_templates()
         if extensions is not None:
@@ -886,7 +889,7 @@ class Template(object):
         vars = dict(*args, **kwargs)
         try:
             return concat(self.root_render_func(self.new_context(vars)))
-        except:
+        except Exception:
             exc_info = sys.exc_info()
         return self.environment.handle_exception(exc_info, True)
 
@@ -908,7 +911,7 @@ class Template(object):
         try:
             for event in self.root_render_func(self.new_context(vars)):
                 yield event
-        except:
+        except Exception:
             exc_info = sys.exc_info()
         else:
             return
